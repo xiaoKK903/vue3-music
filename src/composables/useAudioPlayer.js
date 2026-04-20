@@ -1,5 +1,11 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 
+export const PlayMode = {
+  LIST_LOOP: 'listLoop',
+  SINGLE_LOOP: 'singleLoop',
+  SHUFFLE: 'shuffle'
+}
+
 export function useAudioPlayer() {
   const audio = ref(null)
   const isPlaying = ref(false)
@@ -12,6 +18,12 @@ export function useAudioPlayer() {
   const playlist = ref([])
   const isLoading = ref(false)
   const error = ref(null)
+  const playMode = ref(PlayMode.LIST_LOOP)
+  const historyStack = ref([])
+  const shuffleHistory = ref([])
+  const shuffleIndex = ref(-1)
+  const isUserAction = ref(false)
+  const isSeeking = ref(false)
 
   const progress = computed(() => {
     if (duration.value === 0) return 0
@@ -27,11 +39,24 @@ export function useAudioPlayer() {
   })
 
   const hasNext = computed(() => {
-    return playlist.value.length > 0 && currentIndex.value < playlist.value.length - 1
+    return playlist.value.length > 0
   })
 
   const hasPrevious = computed(() => {
-    return currentIndex.value > 0
+    return playlist.value.length > 0 && historyStack.value.length > 0
+  })
+
+  const playModeLabel = computed(() => {
+    switch (playMode.value) {
+      case PlayMode.LIST_LOOP:
+        return '列表循环'
+      case PlayMode.SINGLE_LOOP:
+        return '单曲循环'
+      case PlayMode.SHUFFLE:
+        return '随机播放'
+      default:
+        return '列表循环'
+    }
   })
 
   function formatTime(seconds) {
@@ -43,9 +68,55 @@ export function useAudioPlayer() {
 
   function setPlaylist(songs, autoPlayFirst = false) {
     playlist.value = songs
+    historyStack.value = []
+    shuffleHistory.value = []
+    shuffleIndex.value = -1
+    
     if (songs.length > 0) {
-      loadSong(songs[0], autoPlayFirst)
+      loadSong(songs[0], autoPlayFirst, false)
     }
+  }
+
+  function setPlayMode(mode) {
+    if (Object.values(PlayMode).includes(mode)) {
+      playMode.value = mode
+      
+      if (mode === PlayMode.SHUFFLE) {
+        generateShuffleOrder()
+      }
+    }
+  }
+
+  function togglePlayMode() {
+    const modes = [PlayMode.LIST_LOOP, PlayMode.SINGLE_LOOP, PlayMode.SHUFFLE]
+    const currentModeIndex = modes.indexOf(playMode.value)
+    const nextModeIndex = (currentModeIndex + 1) % modes.length
+    setPlayMode(modes[nextModeIndex])
+  }
+
+  function generateShuffleOrder() {
+    shuffleHistory.value = []
+    shuffleIndex.value = -1
+    
+    if (playlist.value.length === 0) return
+    
+    const indices = playlist.value.map((_, index) => index)
+    
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]]
+    }
+    
+    if (currentIndex.value !== -1) {
+      const currentPos = indices.indexOf(currentIndex.value)
+      if (currentPos !== -1) {
+        indices.splice(currentPos, 1)
+        indices.unshift(currentIndex.value)
+      }
+    }
+    
+    shuffleHistory.value = indices
+    shuffleIndex.value = 0
   }
 
   function initAudio() {
@@ -68,6 +139,8 @@ export function useAudioPlayer() {
     audio.value.addEventListener('loadstart', handleLoadStart)
     audio.value.addEventListener('loadeddata', handleLoadedData)
     audio.value.addEventListener('playing', handlePlaying)
+    audio.value.addEventListener('seeked', handleSeeked)
+    audio.value.addEventListener('seeking', handleSeeking)
   }
 
   function cleanupAudio() {
@@ -83,13 +156,17 @@ export function useAudioPlayer() {
       audio.value.removeEventListener('loadstart', handleLoadStart)
       audio.value.removeEventListener('loadeddata', handleLoadedData)
       audio.value.removeEventListener('playing', handlePlaying)
+      audio.value.removeEventListener('seeked', handleSeeked)
+      audio.value.removeEventListener('seeking', handleSeeking)
       audio.value.pause()
       audio.value = null
     }
   }
 
   function handleTimeUpdate(e) {
-    currentTime.value = e.target.currentTime
+    if (!isSeeking.value) {
+      currentTime.value = e.target.currentTime
+    }
   }
 
   function handleLoadedMetadata(e) {
@@ -99,8 +176,22 @@ export function useAudioPlayer() {
 
   function handleEnded() {
     isPlaying.value = false
+    
+    if (playMode.value === PlayMode.SINGLE_LOOP) {
+      if (audio.value) {
+        audio.value.currentTime = 0
+        currentTime.value = 0
+        audio.value.play().catch(err => {
+          console.error('单曲循环播放失败:', err)
+        })
+      }
+      return
+    }
+    
     if (hasNext.value) {
       nextSong()
+    } else if (playMode.value === PlayMode.LIST_LOOP && playlist.value.length > 0) {
+      loadSong(playlist.value[0], true, false)
     } else {
       currentTime.value = 0
     }
@@ -134,6 +225,14 @@ export function useAudioPlayer() {
     isLoading.value = false
   }
 
+  function handleSeeked() {
+    isSeeking.value = false
+  }
+
+  function handleSeeking() {
+    isSeeking.value = true
+  }
+
   function handleError(e) {
     console.error('音频加载失败:', e)
     error.value = '音频加载失败，请检查网络连接或音频URL'
@@ -141,9 +240,27 @@ export function useAudioPlayer() {
     isPlaying.value = false
   }
 
-  function loadSong(song, autoPlay = true) {
+  function loadSong(song, autoPlay = true, recordHistory = true) {
+    if (!song) return
+    
     if (!audio.value) {
       initAudio()
+    }
+    
+    if (recordHistory && currentSong.value && currentSong.value.id !== song.id) {
+      if (historyStack.value.length === 0 || 
+          historyStack.value[historyStack.value.length - 1].id !== currentSong.value.id) {
+        historyStack.value.push({
+          id: currentSong.value.id,
+          song: currentSong.value,
+          index: currentIndex.value,
+          time: currentTime.value
+        })
+        
+        if (historyStack.value.length > 50) {
+          historyStack.value.shift()
+        }
+      }
     }
     
     error.value = null
@@ -152,10 +269,23 @@ export function useAudioPlayer() {
     const index = playlist.value.findIndex(s => s.id === song.id)
     if (index !== -1) {
       currentIndex.value = index
+      
+      if (playMode.value === PlayMode.SHUFFLE) {
+        const shufflePos = shuffleHistory.value.indexOf(index)
+        if (shufflePos !== -1) {
+          shuffleIndex.value = shufflePos
+        }
+      }
     }
     
-    audio.value.src = song.url
-    audio.value.load()
+    if (audio.value.src !== song.url) {
+      audio.value.src = song.url
+      audio.value.load()
+    } else {
+      if (currentTime.value === 0 && duration.value > 0) {
+        audio.value.currentTime = 0
+      }
+    }
     
     if (autoPlay) {
       audio.value.play().catch(err => {
@@ -188,15 +318,111 @@ export function useAudioPlayer() {
     }
   }
 
+  function getNextIndex() {
+    const len = playlist.value.length
+    if (len === 0) return -1
+    
+    switch (playMode.value) {
+      case PlayMode.SINGLE_LOOP:
+        return currentIndex.value
+      
+      case PlayMode.SHUFFLE:
+        if (shuffleHistory.value.length === 0) {
+          generateShuffleOrder()
+        }
+        
+        if (shuffleIndex.value < shuffleHistory.value.length - 1) {
+          shuffleIndex.value++
+          return shuffleHistory.value[shuffleIndex.value]
+        } else {
+          generateShuffleOrder()
+          shuffleIndex.value = 0
+          if (shuffleHistory.value.length > 0 && 
+              shuffleHistory.value[0] === currentIndex.value && len > 1) {
+            shuffleIndex.value = 1
+            return shuffleHistory.value[1]
+          }
+          return shuffleHistory.value[0]
+        }
+      
+      case PlayMode.LIST_LOOP:
+      default:
+        if (currentIndex.value < len - 1) {
+          return currentIndex.value + 1
+        } else {
+          return 0
+        }
+    }
+  }
+
+  function getPreviousIndex() {
+    const len = playlist.value.length
+    if (len === 0) return -1
+    
+    if (historyStack.value.length > 0 && playMode.value === PlayMode.SHUFFLE) {
+      const lastHistory = historyStack.value[historyStack.value.length - 1]
+      const index = playlist.value.findIndex(s => s.id === lastHistory.id)
+      if (index !== -1) {
+        return index
+      }
+    }
+    
+    switch (playMode.value) {
+      case PlayMode.SINGLE_LOOP:
+        return currentIndex.value
+      
+      case PlayMode.SHUFFLE:
+        if (shuffleIndex.value > 0) {
+          shuffleIndex.value--
+          return shuffleHistory.value[shuffleIndex.value]
+        } else {
+          return len - 1
+        }
+      
+      case PlayMode.LIST_LOOP:
+      default:
+        if (currentIndex.value > 0) {
+          return currentIndex.value - 1
+        } else {
+          return len - 1
+        }
+    }
+  }
+
   function nextSong() {
-    if (hasNext.value) {
-      loadSong(playlist.value[currentIndex.value + 1], true)
+    const len = playlist.value.length
+    if (len === 0) return
+    
+    const nextIndex = getNextIndex()
+    if (nextIndex !== -1 && nextIndex < len) {
+      isUserAction.value = true
+      loadSong(playlist.value[nextIndex], true, true)
+      isUserAction.value = false
     }
   }
 
   function previousSong() {
-    if (hasPrevious.value) {
-      loadSong(playlist.value[currentIndex.value - 1], true)
+    const len = playlist.value.length
+    if (len === 0) return
+    
+    if (audio.value && audio.value.currentTime > 3) {
+      audio.value.currentTime = 0
+      currentTime.value = 0
+      return
+    }
+    
+    const prevIndex = getPreviousIndex()
+    if (prevIndex !== -1 && prevIndex < len) {
+      isUserAction.value = true
+      
+      if (historyStack.value.length > 0 && playMode.value === PlayMode.SHUFFLE) {
+        const lastHistory = historyStack.value.pop()
+        loadSong(lastHistory.song, true, false)
+      } else {
+        loadSong(playlist.value[prevIndex], true, false)
+      }
+      
+      isUserAction.value = false
     }
   }
 
@@ -254,11 +480,14 @@ export function useAudioPlayer() {
     playlist,
     isLoading,
     error,
+    playMode,
     hasNext,
     hasPrevious,
-    formattedCurrentTime,
-    formattedDuration,
+    playModeLabel,
+    PlayMode,
     setPlaylist,
+    setPlayMode,
+    togglePlayMode,
     loadSong,
     play,
     pause,

@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useAudioPlayer } from '../composables/useAudioPlayer.js'
+import { ref, onMounted, computed } from 'vue'
+import { useAudioPlayer, PlayMode } from '../composables/useAudioPlayer.js'
 
 const {
   isPlaying,
@@ -13,8 +13,10 @@ const {
   currentIndex,
   isLoading,
   error,
+  playMode,
   hasNext,
   hasPrevious,
+  playModeLabel,
   setPlaylist,
   loadSong,
   togglePlay,
@@ -22,7 +24,8 @@ const {
   previousSong,
   seek,
   setVolume,
-  toggleMute
+  toggleMute,
+  togglePlayMode
 } = useAudioPlayer()
 
 const progressBarRef = ref(null)
@@ -51,6 +54,23 @@ const sampleSongs = ref([
   }
 ])
 
+const playModeIcon = computed(() => {
+  switch (playMode.value) {
+    case PlayMode.LIST_LOOP:
+      return 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z'
+    case PlayMode.SINGLE_LOOP:
+      return 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z'
+    case PlayMode.SHUFFLE:
+      return 'M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z'
+    default:
+      return 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z'
+  }
+})
+
+const playModeColor = computed(() => {
+  return playMode.value !== PlayMode.LIST_LOOP ? 'active' : ''
+})
+
 function handleProgressClick(event) {
   if (progressBarRef.value) {
     const rect = progressBarRef.value.getBoundingClientRect()
@@ -60,22 +80,18 @@ function handleProgressClick(event) {
 }
 
 function selectSong(song) {
-  loadSong(song, true)
+  loadSong(song, true, true)
 }
 
 function handlePrevious() {
-  if (hasPrevious.value) {
+  if (sampleSongs.value.length > 0) {
     previousSong()
-  } else if (sampleSongs.value.length > 0) {
-    selectSong(sampleSongs.value[sampleSongs.value.length - 1])
   }
 }
 
 function handleNext() {
-  if (hasNext.value) {
+  if (sampleSongs.value.length > 0) {
     nextSong()
-  } else if (sampleSongs.value.length > 0) {
-    selectSong(sampleSongs.value[0])
   }
 }
 
@@ -123,6 +139,15 @@ onMounted(() => {
       </div>
 
       <div class="controls">
+        <button class="control-btn play-mode-btn" 
+                @click="togglePlayMode"
+                :class="playModeColor"
+                :title="playModeLabel">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path :d="playModeIcon" />
+          </svg>
+        </button>
+
         <button class="control-btn skip-btn" 
                 @click="handlePrevious"
                 :disabled="sampleSongs.length <= 1">
@@ -149,6 +174,10 @@ onMounted(() => {
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
           </svg>
         </button>
+
+        <div class="play-mode-indicator">
+          <span class="mode-label">{{ playModeLabel }}</span>
+        </div>
       </div>
 
       <div class="volume-control">
@@ -368,7 +397,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1rem;
   margin-bottom: 1rem;
 }
 
@@ -396,6 +425,25 @@ onMounted(() => {
   fill: white;
 }
 
+.play-mode-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.play-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.play-mode-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.play-mode-btn.active svg {
+  fill: #ffd700;
+}
+
 .play-btn {
   width: 64px;
   height: 64px;
@@ -410,6 +458,21 @@ onMounted(() => {
 
 .play-btn:disabled {
   opacity: 0.5;
+}
+
+.play-mode-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+}
+
+.mode-label {
+  font-size: 0.65rem;
+  color: white;
+  opacity: 0.7;
+  white-space: nowrap;
+  display: none;
 }
 
 .volume-control {
