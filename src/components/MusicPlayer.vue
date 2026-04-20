@@ -10,28 +10,44 @@ const {
   volume,
   isMuted,
   currentSong,
+  currentIndex,
+  isLoading,
+  error,
+  hasNext,
+  hasPrevious,
+  setPlaylist,
   loadSong,
   togglePlay,
+  nextSong,
+  previousSong,
   seek,
   setVolume,
   toggleMute
 } = useAudioPlayer()
 
 const progressBarRef = ref(null)
+
 const sampleSongs = ref([
   {
     id: 1,
     title: '示例音乐 1',
-    artist: '未知艺术家',
+    artist: 'SoundHelix',
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
     cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20dark%20purple%20neon%20style&image_size=square'
   },
   {
     id: 2,
     title: '示例音乐 2',
-    artist: '未知艺术家',
+    artist: 'SoundHelix',
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
     cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20blue%20cyberpunk%20style&image_size=square'
+  },
+  {
+    id: 3,
+    title: '示例音乐 3',
+    artist: 'SoundHelix',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+    cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20pink%20synthwave%20style&image_size=square'
   }
 ])
 
@@ -44,30 +60,51 @@ function handleProgressClick(event) {
 }
 
 function selectSong(song) {
-  loadSong(song)
-  togglePlay()
+  loadSong(song, true)
+}
+
+function handlePrevious() {
+  if (hasPrevious.value) {
+    previousSong()
+  } else if (sampleSongs.value.length > 0) {
+    selectSong(sampleSongs.value[sampleSongs.value.length - 1])
+  }
+}
+
+function handleNext() {
+  if (hasNext.value) {
+    nextSong()
+  } else if (sampleSongs.value.length > 0) {
+    selectSong(sampleSongs.value[0])
+  }
 }
 
 onMounted(() => {
-  if (sampleSongs.value.length > 0) {
-    loadSong(sampleSongs.value[0])
-  }
+  setPlaylist(sampleSongs.value, false)
 })
 </script>
 
 <template>
   <div class="music-player">
     <div class="player-container">
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+      
       <div class="song-info">
         <div class="album-cover">
           <img :src="currentSong?.cover || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23667eea%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 dy=%22.3em%22%3E♪%3C/text%3E%3C/svg%3E'" 
                :alt="currentSong?.title" 
                class="cover-image"
-               :class="{ 'playing': isPlaying }" />
+               :class="{ 'playing': isPlaying, 'loading': isLoading }" />
+          <div v-if="isLoading" class="loading-overlay">
+            <div class="spinner"></div>
+          </div>
         </div>
         <div class="song-details">
           <h3 class="song-title">{{ currentSong?.title || '选择一首歌曲' }}</h3>
           <p class="song-artist">{{ currentSong?.artist || '未知艺术家' }}</p>
+          <p v-if="isLoading" class="loading-text">加载中...</p>
         </div>
       </div>
 
@@ -86,13 +123,17 @@ onMounted(() => {
       </div>
 
       <div class="controls">
-        <button class="control-btn skip-btn" @click="selectSong(sampleSongs[0])">
+        <button class="control-btn skip-btn" 
+                @click="handlePrevious"
+                :disabled="sampleSongs.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
           </svg>
         </button>
         
-        <button class="control-btn play-btn" @click="togglePlay">
+        <button class="control-btn play-btn" 
+                @click="togglePlay"
+                :disabled="!currentSong">
           <svg v-if="!isPlaying" viewBox="0 0 24 24" width="32" height="32">
             <path d="M8 5v14l11-7z"/>
           </svg>
@@ -101,7 +142,9 @@ onMounted(() => {
           </svg>
         </button>
         
-        <button class="control-btn skip-btn" @click="selectSong(sampleSongs[1] || sampleSongs[0])">
+        <button class="control-btn skip-btn" 
+                @click="handleNext"
+                :disabled="sampleSongs.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
           </svg>
@@ -128,22 +171,28 @@ onMounted(() => {
     </div>
 
     <div class="playlist">
-      <h4 class="playlist-title">播放列表</h4>
+      <h4 class="playlist-title">播放列表 ({{ sampleSongs.length }})</h4>
       <div class="song-list">
-        <div v-for="song in sampleSongs" 
+        <div v-for="(song, index) in sampleSongs" 
              :key="song.id" 
              class="song-item"
-             :class="{ 'active': currentSong?.id === song.id }"
+             :class="{ 
+               'active': currentSong?.id === song.id,
+               'current': currentIndex === index
+             }"
              @click="selectSong(song)">
+          <div class="song-number">
+            <span v-if="currentSong?.id === song.id && isPlaying" class="playing-indicator">
+              <span class="bar"></span>
+              <span class="bar"></span>
+              <span class="bar"></span>
+            </span>
+            <span v-else class="number">{{ index + 1 }}</span>
+          </div>
           <img :src="song.cover" :alt="song.title" class="song-cover" />
           <div class="song-info-mini">
             <span class="song-title-mini">{{ song.title }}</span>
             <span class="song-artist-mini">{{ song.artist }}</span>
-          </div>
-          <div v-if="currentSong?.id === song.id && isPlaying" class="playing-indicator">
-            <span class="bar"></span>
-            <span class="bar"></span>
-            <span class="bar"></span>
           </div>
         </div>
       </div>
@@ -161,6 +210,14 @@ onMounted(() => {
   width: 100%;
 }
 
+.error-message {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 .player-container {
   padding: 2rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -173,6 +230,7 @@ onMounted(() => {
 }
 
 .album-cover {
+  position: relative;
   width: 100px;
   height: 100px;
   border-radius: 12px;
@@ -191,14 +249,44 @@ onMounted(() => {
   animation: rotate 10s linear infinite;
 }
 
+.cover-image.loading {
+  opacity: 0.5;
+}
+
 @keyframes rotate {
   from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
   to { transform: rotate(360deg); }
 }
 
 .song-details {
   margin-left: 1.5rem;
   color: white;
+  flex: 1;
 }
 
 .song-title {
@@ -208,9 +296,21 @@ onMounted(() => {
 }
 
 .song-artist {
-  margin: 0;
+  margin: 0 0 0.25rem 0;
   font-size: 0.9rem;
   opacity: 0.8;
+}
+
+.loading-text {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
 }
 
 .progress-section {
@@ -241,7 +341,7 @@ onMounted(() => {
   height: 100%;
   background: white;
   border-radius: 4px;
-  transition: width 0.1s linear;
+  transition: width 0.05s linear;
 }
 
 .progress-thumb {
@@ -253,7 +353,7 @@ onMounted(() => {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: left 0.1s linear;
+  transition: left 0.05s linear;
 }
 
 .time-display {
@@ -280,11 +380,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.control-btn:hover {
+.control-btn:hover:not(:disabled) {
   transform: scale(1.1);
+}
+
+.control-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .control-btn svg {
@@ -301,6 +406,10 @@ onMounted(() => {
 
 .play-btn svg {
   fill: #667eea !important;
+}
+
+.play-btn:disabled {
+  opacity: 0.5;
 }
 
 .volume-control {
@@ -321,6 +430,7 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.3);
   border-radius: 2px;
   outline: none;
+  cursor: pointer;
 }
 
 .volume-slider::-webkit-slider-thumb {
@@ -330,6 +440,16 @@ onMounted(() => {
   background: white;
   border-radius: 50%;
   cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
@@ -349,6 +469,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .song-item {
@@ -364,8 +486,23 @@ onMounted(() => {
   background: rgba(102, 126, 234, 0.1);
 }
 
-.song-item.active {
+.song-item.active,
+.song-item.current {
   background: rgba(102, 126, 234, 0.2);
+}
+
+.song-number {
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.5rem;
+}
+
+.number {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
 }
 
 .song-cover {
@@ -380,17 +517,24 @@ onMounted(() => {
   flex-direction: column;
   margin-left: 1rem;
   flex: 1;
+  min-width: 0;
 }
 
 .song-title-mini {
   font-size: 0.9rem;
   font-weight: 500;
   color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .song-artist-mini {
   font-size: 0.75rem;
   color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .playing-indicator {
@@ -400,18 +544,35 @@ onMounted(() => {
   height: 16px;
 }
 
-.bar {
+.playing-indicator .bar {
   width: 3px;
   background: #667eea;
   animation: bar 0.5s ease-in-out infinite alternate;
 }
 
-.bar:nth-child(1) { animation-delay: 0s; height: 4px; }
-.bar:nth-child(2) { animation-delay: 0.2s; height: 8px; }
-.bar:nth-child(3) { animation-delay: 0.4s; height: 6px; }
+.playing-indicator .bar:nth-child(1) { animation-delay: 0s; height: 4px; }
+.playing-indicator .bar:nth-child(2) { animation-delay: 0.2s; height: 8px; }
+.playing-indicator .bar:nth-child(3) { animation-delay: 0.4s; height: 6px; }
 
 @keyframes bar {
   from { height: 4px; }
   to { height: 12px; }
+}
+
+.song-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.song-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.song-list::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.3);
+  border-radius: 2px;
+}
+
+.song-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.5);
 }
 </style>
