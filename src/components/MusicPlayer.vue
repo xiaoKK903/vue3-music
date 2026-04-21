@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
-import { useAudioPlayer, PlayMode } from '../composables/useAudioPlayer.js'
+import { useAudioPlayer, PlayMode, EQPresets, eqPresetNames, eqPresetValues, eqBandLabels } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
 import { localSongs } from '../data/songs.js'
 
@@ -25,6 +25,14 @@ const {
   hasNext,
   hasPrevious,
   playModeLabel,
+  sleepTimerEnabled,
+  sleepTimerDuration,
+  sleepTimerRemaining,
+  sleepTimerRemainingFormatted,
+  eqEnabled,
+  currentEQPreset,
+  currentEQPresetName,
+  eqBandGains,
   setPlaylist,
   loadSong,
   togglePlay,
@@ -38,6 +46,12 @@ const {
   setVolume,
   toggleMute,
   togglePlayMode,
+  setSleepTimer,
+  cancelSleepTimer,
+  updateEQBand,
+  applyEQPreset,
+  resetEQToDefault,
+  toggleEQEnabled,
   formatTime
 } = useAudioPlayer()
 
@@ -88,6 +102,69 @@ const lyricsButtonIcon = computed(() => {
 const lyricsButtonColor = computed(() => {
   return showLyricsPanel.value ? 'active' : ''
 })
+
+const showSleepTimerPanel = ref(false)
+
+const sleepTimerOptions = ref([
+  { minutes: 15, label: '15分钟' },
+  { minutes: 30, label: '30分钟' },
+  { minutes: 45, label: '45分钟' },
+  { minutes: 60, label: '60分钟' },
+  { minutes: 90, label: '90分钟' },
+  { minutes: 0, label: '取消定时' }
+])
+
+const sleepTimerButtonColor = computed(() => {
+  return sleepTimerEnabled.value ? 'active' : ''
+})
+
+const sleepTimerButtonIcon = computed(() => {
+  if (sleepTimerEnabled.value) {
+    return 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z'
+  }
+  return 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z'
+})
+
+function toggleSleepTimerPanel() {
+  showSleepTimerPanel.value = !showSleepTimerPanel.value
+}
+
+function selectSleepTimer(minutes) {
+  if (minutes === 0) {
+    cancelSleepTimer()
+  } else {
+    setSleepTimer(minutes)
+  }
+  showSleepTimerPanel.value = false
+}
+
+const showEQPanel = ref(false)
+
+const eqPresetList = ref([
+  { value: EQPresets.NORMAL, label: '默认' },
+  { value: EQPresets.BASS_BOOST, label: '重低音' },
+  { value: EQPresets.POP, label: '流行' },
+  { value: EQPresets.CLASSICAL, label: '古典' },
+  { value: EQPresets.VOCAL, label: '人声增强' }
+])
+
+function toggleEQPanel() {
+  showEQPanel.value = !showEQPanel.value
+}
+
+function selectEQPreset(preset) {
+  applyEQPreset(preset)
+}
+
+function handleEQBandChange(index, gain) {
+  updateEQBand(index, gain)
+}
+
+function getEQBandColor(bandIndex) {
+  if (bandIndex < 3) return '#ff6b6b'
+  if (bandIndex < 6) return '#ffd93d'
+  return '#6bcb77'
+}
 
 function getEventPosition(event) {
   if (event.touches && event.touches.length > 0) {
@@ -319,6 +396,88 @@ onUnmounted(() => {
         <p>当前歌曲暂无歌词</p>
       </div>
 
+      <transition name="sleep-timer-panel">
+        <div v-if="showSleepTimerPanel" class="sleep-timer-section">
+          <h5 class="timer-title">睡眠定时</h5>
+          <div v-if="sleepTimerEnabled" class="timer-status">
+            <span class="remaining-time">{{ sleepTimerRemainingFormatted }}</span>
+            <span class="timer-label">后暂停播放</span>
+          </div>
+          <div class="timer-options">
+            <button v-for="option in sleepTimerOptions" 
+                    :key="option.minutes"
+                    class="timer-option-btn"
+                    :class="{ 
+                      'active': sleepTimerDuration === option.minutes && option.minutes !== 0,
+                      'cancel': option.minutes === 0
+                    }"
+                    @click="selectSleepTimer(option.minutes)">
+              {{ option.label }}
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <transition name="eq-panel">
+        <div v-if="showEQPanel" class="eq-section">
+          <div class="eq-header">
+            <h5 class="eq-title">音效均衡器</h5>
+            <div class="eq-toggle">
+              <span class="eq-toggle-label">{{ eqEnabled ? '开启' : '关闭' }}</span>
+              <button class="eq-toggle-btn" @click="toggleEQEnabled"
+                      :class="{ 'active': eqEnabled }">
+                <span class="eq-toggle-thumb"></span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="eq-preset-selector">
+            <button v-for="preset in eqPresetList" 
+                    :key="preset.value"
+                    class="eq-preset-btn"
+                    :class="{ 'active': currentEQPreset === preset.value }"
+                    @click="selectEQPreset(preset.value)">
+              {{ preset.label }}
+            </button>
+          </div>
+
+          <div class="eq-band-controls" :class="{ 'disabled': !eqEnabled }">
+            <div class="eq-band" v-for="(gain, index) in eqBandGains" :key="index">
+              <div class="eq-band-label">{{ eqBandLabels[index] }}</div>
+              <div class="eq-band-slider-wrapper">
+                <div class="eq-band-track" :style="{ backgroundColor: getEQBandColor(index) + '20' }">
+                  <div class="eq-band-fill" 
+                       :style="{ 
+                         height: Math.abs(gain) * 5 + '%',
+                         bottom: gain >= 0 ? '50%' : 'auto',
+                         top: gain < 0 ? '50%' : 'auto',
+                         backgroundColor: getEQBandColor(index)
+                       }">
+                  </div>
+                </div>
+                <input type="range" 
+                       class="eq-band-slider"
+                       min="-12" 
+                       max="12" 
+                       step="1"
+                       :value="gain"
+                       :disabled="!eqEnabled"
+                       @input="handleEQBandChange(index, parseFloat($event.target.value))" />
+              </div>
+              <div class="eq-band-value" :style="{ color: getEQBandColor(index) }">
+                {{ gain > 0 ? '+' + gain : gain }}dB
+              </div>
+            </div>
+          </div>
+
+          <div class="eq-footer">
+            <button class="eq-reset-btn" @click="resetEQToDefault">
+              重置
+            </button>
+          </div>
+        </div>
+      </transition>
+
       <div class="progress-section">
         <div class="progress-bar-container" 
              ref="progressBarRef"
@@ -344,6 +503,24 @@ onUnmounted(() => {
                 :title="showLyricsPanel ? '关闭歌词' : '显示歌词'">
           <svg viewBox="0 0 24 24" width="22" height="22">
             <path :d="lyricsButtonIcon" />
+          </svg>
+        </button>
+
+        <button class="control-btn sleep-timer-btn"
+                @click="toggleSleepTimerPanel"
+                :class="sleepTimerButtonColor"
+                :title="sleepTimerEnabled ? `定时中: ${sleepTimerRemainingFormatted}` : '睡眠定时'">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path :d="sleepTimerButtonIcon" />
+          </svg>
+        </button>
+
+        <button class="control-btn eq-btn"
+                @click="toggleEQPanel"
+                :class="{ 'active': currentEQPreset !== EQPresets.NORMAL }"
+                :title="`音效: ${currentEQPresetName}`">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
           </svg>
         </button>
 
@@ -966,5 +1143,379 @@ onUnmounted(() => {
 
 .lyrics-container::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
+}
+
+.sleep-timer-section {
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.timer-title {
+  margin: 0 0 0.75rem 0;
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.timer-status {
+  text-align: center;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.remaining-time {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.timer-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.timer-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.timer-option-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.timer-option-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.timer-option-btn.active {
+  background: rgba(255, 215, 0, 0.3);
+  border-color: #ffd700;
+  color: #ffd700;
+}
+
+.timer-option-btn.cancel {
+  background: rgba(255, 100, 100, 0.2);
+  border-color: rgba(255, 100, 100, 0.5);
+}
+
+.timer-option-btn.cancel:hover {
+  background: rgba(255, 100, 100, 0.3);
+}
+
+.sleep-timer-panel-enter-active,
+.sleep-timer-panel-leave-active {
+  transition: all 0.3s ease;
+}
+
+.sleep-timer-panel-enter-from,
+.sleep-timer-panel-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.sleep-timer-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.sleep-timer-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sleep-timer-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sleep-timer-btn.active svg {
+  fill: #ffd700;
+}
+
+.eq-section {
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.eq-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.eq-title {
+  margin: 0;
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.eq-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eq-toggle-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.eq-toggle-btn {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  padding: 0;
+}
+
+.eq-toggle-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.eq-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.2s ease;
+}
+
+.eq-toggle-btn.active .eq-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.eq-preset-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.eq-preset-btn {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.eq-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.eq-preset-btn.active {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.4) 0%, rgba(118, 75, 162, 0.4) 100%);
+  border-color: #667eea;
+}
+
+.eq-band-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  gap: 0.3rem;
+}
+
+.eq-band-controls.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.eq-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.eq-band-label {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+.eq-band-slider-wrapper {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  display: flex;
+  justify-content: center;
+}
+
+.eq-band-track {
+  position: absolute;
+  width: 4px;
+  height: 100%;
+  border-radius: 2px;
+  z-index: 1;
+}
+
+.eq-band-fill {
+  position: absolute;
+  width: 100%;
+  border-radius: 2px;
+  z-index: 2;
+  transition: height 0.1s ease;
+}
+
+.eq-band-slider {
+  position: absolute;
+  width: 120px;
+  height: 20px;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  top: 50%;
+  left: 50%;
+  margin-left: -60px;
+  margin-top: -10px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.eq-band-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.eq-band-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  border-radius: 2px;
+}
+
+.eq-band-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.eq-band-slider::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  background: transparent;
+  border-radius: 2px;
+}
+
+.eq-band-slider:disabled {
+  cursor: not-allowed;
+}
+
+.eq-band-slider:disabled::-webkit-slider-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.eq-band-value {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.eq-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.eq-reset-btn {
+  padding: 0.5rem 1.5rem;
+  border: 1px solid rgba(255, 100, 100, 0.5);
+  background: rgba(255, 100, 100, 0.15);
+  color: rgba(255, 100, 100, 0.9);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.eq-reset-btn:hover {
+  background: rgba(255, 100, 100, 0.3);
+  border-color: rgba(255, 100, 100, 0.7);
+}
+
+.eq-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.eq-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.eq-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.eq-btn.active svg {
+  fill: #667eea;
+}
+
+.eq-panel-enter-active,
+.eq-panel-leave-active {
+  transition: all 0.3s ease;
+}
+
+.eq-panel-enter-from,
+.eq-panel-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 </style>
