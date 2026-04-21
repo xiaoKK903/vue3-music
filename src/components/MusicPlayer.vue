@@ -197,11 +197,8 @@ function setLyricsRef(el, index) {
   }
 }
 
-function scrollToCurrentLyric() {
+function scrollToCurrentLyric(smooth = true) {
   if (!showLyricsPanel.value) return
-  
-  const now = Date.now()
-  if (now - lastScrollTime.value < SCROLL_THRESHOLD) return
   
   if (currentLyricIndex.value >= 0 && lyricItemRefs.value[currentLyricIndex.value]) {
     const lyricEl = lyricItemRefs.value[currentLyricIndex.value]
@@ -215,10 +212,10 @@ function scrollToCurrentLyric() {
       
       container.scrollTo({
         top: Math.max(0, targetScrollTop),
-        behavior: 'smooth'
+        behavior: smooth ? 'smooth' : 'auto'
       })
       
-      lastScrollTime.value = now
+      lastScrollTime.value = Date.now()
     }
   }
 }
@@ -237,7 +234,11 @@ watch(displayTime, (newTime) => {
     
     if (currentLyricIndex.value !== prevIndex) {
       nextTick(() => {
-        scrollToCurrentLyric()
+        if (isDragging.value || seekTargetTime.value !== null) {
+          scrollToCurrentLyric(false)
+        } else {
+          scrollToCurrentLyric(true)
+        }
       })
     }
   }
@@ -248,7 +249,7 @@ watch(currentSong, (newSong) => {
     parseLyrics(newSong.lyrics)
     findCurrentLyricIndex(displayTime.value)
     nextTick(() => {
-      scrollToCurrentLyric()
+      scrollToCurrentLyric(false)
     })
   } else {
     clearLyrics()

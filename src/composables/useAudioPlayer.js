@@ -30,7 +30,6 @@ export function useAudioPlayer() {
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
   const isUserAction = ref(false)
-  const animationFrameId = ref(null)
 
   const displayTime = computed(() => {
     if (isDragging.value) {
@@ -81,15 +80,6 @@ export function useAudioPlayer() {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  function updateCurrentTime() {
-    if (audio.value && isPlaying.value && !isSeeking.value && !isDragging.value) {
-      if (seekTargetTime.value === null) {
-        currentTime.value = audio.value.currentTime
-      }
-    }
-    animationFrameId.value = requestAnimationFrame(updateCurrentTime)
   }
 
   function setPlaylist(songs, autoPlayFirst = false) {
@@ -167,11 +157,6 @@ export function useAudioPlayer() {
     audio.value.addEventListener('playing', handlePlaying)
     audio.value.addEventListener('seeked', handleSeeked)
     audio.value.addEventListener('seeking', handleSeeking)
-    
-    if (animationFrameId.value) {
-      cancelAnimationFrame(animationFrameId.value)
-    }
-    animationFrameId.value = requestAnimationFrame(updateCurrentTime)
   }
 
   function cleanupAudio() {
@@ -192,16 +177,22 @@ export function useAudioPlayer() {
       audio.value.pause()
       audio.value = null
     }
-    if (animationFrameId.value) {
-      cancelAnimationFrame(animationFrameId.value)
-      animationFrameId.value = null
-    }
   }
 
   function handleTimeUpdate(e) {
-    if (!isSeeking.value && !isDragging.value && seekTargetTime.value === null) {
-      currentTime.value = e.target.currentTime
+    if (isDragging.value) {
+      return
     }
+    
+    if (seekTargetTime.value !== null) {
+      return
+    }
+    
+    if (isSeeking.value) {
+      return
+    }
+    
+    currentTime.value = e.target.currentTime
   }
 
   function handleLoadedMetadata(e) {
@@ -264,8 +255,10 @@ export function useAudioPlayer() {
 
   function handleSeeked() {
     isSeeking.value = false
+    
     if (audio.value) {
-      currentTime.value = audio.value.currentTime
+      const actualTime = audio.value.currentTime
+      currentTime.value = actualTime
       seekTargetTime.value = null
     }
   }
