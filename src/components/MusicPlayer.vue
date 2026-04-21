@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, watch, nextTick } from 'vue'
+import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useAudioPlayer, PlayMode } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
 
@@ -13,10 +13,14 @@ const {
   currentSong,
   currentIndex,
   currentTime,
+  displayTime,
   duration,
   isLoading,
   error,
   playMode,
+  isSeeking,
+  isDragging,
+  seekTargetTime,
   hasNext,
   hasPrevious,
   playModeLabel,
@@ -26,17 +30,24 @@ const {
   nextSong,
   previousSong,
   seek,
+  seekToTime,
+  startDragging,
+  updateDragTime,
+  finishDragging,
   setVolume,
   toggleMute,
-  togglePlayMode
+  togglePlayMode,
+  formatTime
 } = useAudioPlayer()
 
 const {
   lyricsList,
   currentLyricIndex,
+  currentLyric,
   showLyricsPanel,
   parseLyrics,
   findCurrentLyricIndex,
+  seekToLyric,
   toggleLyricsPanel,
   clearLyrics
 } = useLyrics()
@@ -44,6 +55,9 @@ const {
 const progressBarRef = ref(null)
 const lyricsContainerRef = ref(null)
 const lyricItemRefs = ref([])
+const isDraggingProgress = ref(false)
+const lastScrollTime = ref(0)
+const SCROLL_THRESHOLD = 50
 
 const sampleLyrics = ref([
   `[00:00.00]前奏
@@ -164,12 +178,94 @@ const lyricsButtonColor = computed(() => {
   return showLyricsPanel.value ? 'active' : ''
 })
 
+const displayLyricIndex = computed(() => {
+  return currentLyricIndex.value
+})
+
+function getEventPosition(event) {
+  if (event.touches && event.touches.length > 0) {
+    return {
+      clientX: event.touches[0].clientX,
+      clientY: event.touches[0].clientY
+    }
+  }
+  if (event.changedTouches && event.changedTouches.length > 0) {
+    return {
+      clientX: event.changedTouches[0].clientX,
+      clientY: event.changedTouches[0].clientY
+    }
+  }
+  return {
+    clientX: event.clientX,
+    clientY: event.clientY
+  }
+}
+
 function handleProgressClick(event) {
+  if (isDraggingProgress.value) return
+  
   if (progressBarRef.value) {
     const rect = progressBarRef.value.getBoundingClientRect()
-    const percent = ((event.clientX - rect.left) / rect.width) * 100
+    const pos = getEventPosition(event)
+    const percent = ((pos.clientX - rect.left) / rect.width) * 100
     seek(percent)
   }
+}
+
+function handleProgressMouseDown(event) {
+  event.preventDefault()
+  isDraggingProgress.value = true
+  startDragging()
+  handleProgressMove(event)
+  
+  window.addEventListener('mousemove', handleProgressMove)
+  window.addEventListener('mouseup', handleProgressMouseUp)
+}
+
+function handleProgressTouchStart(event) {
+  event.preventDefault()
+  isDraggingProgress.value = true
+  startDragging()
+  handleProgressMove(event)
+}
+
+function handleProgressTouchMove(event) {
+  if (isDraggingProgress.value) {
+    handleProgressMove(event)
+  }
+}
+
+function handleProgressTouchEnd(event) {
+  if (isDraggingProgress.value) {
+    handleProgressMouseUp(event)
+  }
+}
+
+function handleProgressMove(event) {
+  if (!isDraggingProgress.value || !progressBarRef.value) return
+  
+  const rect = progressBarRef.value.getBoundingClientRect()
+  const pos = getEventPosition(event)
+  let percent = ((pos.clientX - rect.left) / rect.width) * 100
+  
+  percent = Math.max(0, Math.min(100, percent))
+  updateDragTime(percent)
+}
+
+function handleProgressMouseUp(event) {
+  isDraggingProgress.value = false
+  
+  if (progressBarRef.value) {
+    const rect = progressBarRef.value.getBoundingClientRect()
+    const pos = getEventPosition(event)
+    let percent = ((pos.clientX - rect.left) / rect.width) * 100
+    percent = Math.max(0, Math.min(100, percent))
+    
+    finishDragging(percent)
+  }
+  
+  window.removeEventListener('mousemove', handleProgressMove)
+  window.removeEventListener('mouseup', handleProgressMouseUp)
 }
 
 function selectSong(song) {
@@ -195,6 +291,11 @@ function setLyricsRef(el, index) {
 }
 
 function scrollToCurrentLyric() {
+  if (!showLyricsPanel.value) return
+  
+  const now = Date.now()
+  if (now - lastScrollTime.value < SCROLL_THRESHOLD) return
+  
   if (currentLyricIndex.value >= 0 && lyricItemRefs.value[currentLyricIndex.value]) {
     const lyricEl = lyricItemRefs.value[currentLyricIndex.value]
     if (lyricEl && lyricsContainerRef.value) {
@@ -209,12 +310,21 @@ function scrollToCurrentLyric() {
         top: Math.max(0, targetScrollTop),
         behavior: 'smooth'
       })
+      
+      lastScrollTime.value = now
     }
   }
 }
 
-watch(currentTime, (newTime) => {
-  if (lyricsList.value.length > 0) {
+function handleLyricClick(index) {
+  const time = seekToLyric(index)
+  if (time !== null) {
+    seekToTime(time)
+  }
+}
+
+watch(displayTime, (newTime) => {
+  if (lyricsList.value.length > 0 && !isDraggingProgress.value) {
     const prevIndex = currentLyricIndex.value
     findCurrentLyricIndex(newTime)
     
@@ -231,7 +341,7 @@ watch(currentSong, (newSong) => {
     const songIndex = sampleSongs.value.findIndex(s => s.id === newSong.id)
     if (songIndex !== -1 && sampleLyrics.value[songIndex]) {
       parseLyrics(sampleLyrics.value[songIndex])
-      findCurrentLyricIndex(currentTime.value)
+      findCurrentLyricIndex(displayTime.value)
     } else {
       clearLyrics()
     }
@@ -240,20 +350,16 @@ watch(currentSong, (newSong) => {
   }
 })
 
-watch(progress, () => {
-  if (lyricsList.value.length > 0) {
-    findCurrentLyricIndex(currentTime.value)
-    nextTick(() => {
-      scrollToCurrentLyric()
-    })
-  }
-})
-
 onMounted(() => {
   setPlaylist(sampleSongs.value, false)
   if (sampleLyrics.value[0]) {
     parseLyrics(sampleLyrics.value[0])
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', handleProgressMove)
+  window.removeEventListener('mouseup', handleProgressMouseUp)
 })
 </script>
 
@@ -288,8 +394,15 @@ onMounted(() => {
                  :key="index"
                  ref="(el) => setLyricsRef(el, index)"
                  class="lyric-line"
-                 :class="{ 'active': currentLyricIndex === index }">
-              {{ lyric.text }}
+                 :class="{ 
+                   'active': currentLyricIndex === index,
+                   'nearby': Math.abs(currentLyricIndex - index) <= 2
+                 }"
+                 @click="handleLyricClick(index)">
+              <span class="lyric-text">{{ lyric.text }}</span>
+              <span v-if="currentLyricIndex === index" class="lyric-time">
+                {{ formatTime(lyric.time) }}
+              </span>
             </div>
             <div class="lyrics-bottom-padding"></div>
           </div>
@@ -303,7 +416,11 @@ onMounted(() => {
       <div class="progress-section">
         <div class="progress-bar-container" 
              ref="progressBarRef"
-             @click="handleProgressClick">
+             @click="handleProgressClick"
+             @mousedown="handleProgressMouseDown"
+             @touchstart="handleProgressTouchStart"
+             @touchmove="handleProgressTouchMove"
+             @touchend="handleProgressTouchEnd">
           <div class="progress-background"></div>
           <div class="progress-fill" :style="{ width: progress + '%' }"></div>
           <div class="progress-thumb" :style="{ left: progress + '%' }"></div>
@@ -541,27 +658,53 @@ onMounted(() => {
 
 .lyric-line {
   text-align: center;
-  padding: 0.5rem 0;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.95rem;
+  padding: 0.75rem 0.5rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.9rem;
   line-height: 1.6;
   transition: all 0.3s ease;
+  cursor: pointer;
+  border-radius: 4px;
+  position: relative;
+}
+
+.lyric-line:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lyric-line.nearby:not(.active) {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .lyric-line.active {
   color: white;
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   font-weight: 600;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1rem 0.5rem;
+}
+
+.lyric-text {
+  display: block;
+}
+
+.lyric-time {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  font-weight: normal;
+  margin-top: 0.25rem;
+  display: block;
 }
 
 .lyrics-bottom-padding {
-  height: 80px;
+  height: 100px;
 }
 
 .no-lyrics {
   text-align: center;
-  padding: 1rem;
+  padding: 1.5rem;
   color: rgba(255, 255, 255, 0.6);
   font-size: 0.9rem;
 }
@@ -576,6 +719,9 @@ onMounted(() => {
   opacity: 0;
   max-height: 0;
   transform: translateY(-10px);
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .progress-section {
@@ -587,6 +733,7 @@ onMounted(() => {
   height: 8px;
   cursor: pointer;
   margin-bottom: 0.5rem;
+  touch-action: none;
 }
 
 .progress-background {
@@ -606,7 +753,6 @@ onMounted(() => {
   height: 100%;
   background: white;
   border-radius: 4px;
-  transition: width 0.05s linear;
 }
 
 .progress-thumb {
@@ -618,7 +764,12 @@ onMounted(() => {
   border-radius: 50%;
   transform: translate(-50%, -50%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: left 0.05s linear;
+  transition: transform 0.1s ease;
+}
+
+.progress-thumb:hover,
+.progress-bar-container:active .progress-thumb {
+  transform: translate(-50%, -50%) scale(1.2);
 }
 
 .time-display {
@@ -633,7 +784,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
