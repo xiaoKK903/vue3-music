@@ -822,7 +822,7 @@ onUnmounted(() => {
 
 .player-container {
   padding: 2rem;
-  background: var(--accent-gradient);
+  background: var(--bg-secondary);
 }
 
 .song-info {
@@ -837,7 +837,7 @@ onUnmounted(() => {
   height: 100px;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 .cover-image {
@@ -1125,13 +1125,19 @@ onUnmounted(() => {
 .play-btn {
   width: 64px;
   height: 64px;
-  background: var(--text-primary) !important;
+  background: var(--accent-gradient) !important;
   border-radius: 50%;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  transition: all 0.3s ease;
+}
+
+.play-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-xl), var(--shadow-glow);
 }
 
 .play-btn svg {
-  fill: var(--accent-primary) !important;
+  fill: var(--text-on-accent) !important;
 }
 
 .play-btn:disabled {
