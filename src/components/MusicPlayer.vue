@@ -9,7 +9,8 @@ import {
   eqBandLabels,
   playbackRates,
   playbackRateLabels,
-  resetAllToDefault
+  resetAllToDefault,
+  defaultLyricsSettings
 } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
 import { useTheme, THEME_MODES } from '../composables/useTheme.js'
@@ -314,6 +315,14 @@ function handleLineHeightChange(height) {
 
 function handleOpacityChange(opacity) {
   setLyricsSettings({ opacity: opacity })
+}
+
+function resetLyricsSettings() {
+  setLyricsSettings({
+    fontSize: defaultLyricsSettings.fontSize,
+    lineHeight: defaultLyricsSettings.lineHeight,
+    opacity: defaultLyricsSettings.opacity
+  })
 }
 
 const lyricsStyle = computed(() => {
@@ -633,44 +642,86 @@ onUnmounted(() => {
 
       <transition name="lyrics-settings-panel">
         <div v-if="showLyricsSettingsPanel" class="lyrics-settings-section">
-          <h5 class="section-title">歌词设置</h5>
-          
-          <div class="setting-row">
-            <span class="setting-label">字体大小</span>
-            <div class="setting-options">
-              <button v-for="size in fontSizeOptions" 
-                      :key="size"
-                      class="setting-btn mini"
-                      :class="{ 'active': lyricsSettings.fontSize === size }"
-                      @click="handleFontSizeChange(size)">
-                {{ size }}px
-              </button>
-            </div>
+          <div class="settings-header">
+            <h5 class="section-title">歌词设置</h5>
+            <button class="reset-settings-btn" @click="resetLyricsSettings" title="恢复默认">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+              </svg>
+            </button>
           </div>
           
-          <div class="setting-row">
-            <span class="setting-label">行间距</span>
-            <div class="setting-options">
-              <button v-for="lh in lineHeightOptions" 
-                      :key="lh"
-                      class="setting-btn mini"
-                      :class="{ 'active': lyricsSettings.lineHeight === lh }"
-                      @click="handleLineHeightChange(lh)">
-                {{ lh }}
-              </button>
+          <div class="settings-grid">
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <span class="setting-icon">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 7 4 4 20 4 20 7"/>
+                    <line x1="9" y1="20" x2="15" y2="20"/>
+                    <line x1="12" y1="4" x2="12" y2="20"/>
+                  </svg>
+                </span>
+                <span class="setting-name">字体大小</span>
+                <span class="setting-value">{{ lyricsSettings.fontSize }}px</span>
+              </div>
+              <div class="setting-options-row">
+                <button v-for="size in fontSizeOptions" 
+                        :key="size"
+                        class="option-pill"
+                        :class="{ 'active': lyricsSettings.fontSize === size }"
+                        @click="handleFontSizeChange(size)">
+                  {{ size }}
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <div class="setting-row">
-            <span class="setting-label">透明度</span>
-            <div class="setting-options">
-              <button v-for="op in opacityOptions" 
-                      :key="op"
-                      class="setting-btn mini"
-                      :class="{ 'active': lyricsSettings.opacity === op }"
-                      @click="handleOpacityChange(op)">
-                {{ Math.round(op * 100) }}%
-              </button>
+
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <span class="setting-icon">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                </span>
+                <span class="setting-name">行间距</span>
+                <span class="setting-value">{{ lyricsSettings.lineHeight }}</span>
+              </div>
+              <div class="setting-options-row">
+                <button v-for="lh in lineHeightOptions" 
+                        :key="lh"
+                        class="option-pill"
+                        :class="{ 'active': lyricsSettings.lineHeight === lh }"
+                        @click="handleLineHeightChange(lh)">
+                  {{ lh }}
+                </button>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="setting-label-row">
+                <span class="setting-icon">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8.5 8.5a3.5 3.5 0 0 1 7 0 0 0 0 7 3.5 3.5 0 0 1-7 0 0 0 0-7z"/>
+                  </svg>
+                </span>
+                <span class="setting-name">透明度</span>
+                <span class="setting-value">{{ Math.round(lyricsSettings.opacity * 100) }}%</span>
+              </div>
+              <div class="setting-options-row">
+                <button v-for="op in opacityOptions" 
+                        :key="op"
+                        class="option-pill"
+                        :class="{ 'active': lyricsSettings.opacity === op }"
+                        @click="handleOpacityChange(op)">
+                  {{ Math.round(op * 100) }}%
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -755,107 +806,110 @@ onUnmounted(() => {
       </div>
 
       <div class="controls">
-        <button class="control-btn theme-btn"
-                @click="handleToggleTheme"
-                :title="isDark ? '切换为浅色主题' : '切换为深色主题'">
-          <svg v-if="isDark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-          </svg>
-        </button>
+        <div class="control-group system-controls">
+          <button class="control-btn theme-btn"
+                  @click="handleToggleTheme"
+                  :class="{ 'active': !isDark }"
+                  :title="isDark ? '切换为浅色主题' : '切换为深色主题'">
+            <svg v-if="isDark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+            </svg>
+          </button>
 
-        <button class="control-btn reset-btn"
-                @click="handleResetAll"
-                title="重置所有设置为默认">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-          </svg>
-        </button>
+          <button class="control-btn reset-btn"
+                  @click="handleResetAll"
+                  title="重置所有设置为默认">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+        </div>
 
-        <button class="control-btn lyrics-btn"
-                @click="toggleLyricsPanel"
-                :class="lyricsButtonColor"
-                :title="showLyricsPanel ? '关闭歌词' : '显示歌词'">
-          <svg viewBox="0 0 24 24" width="22" height="22">
-            <path :d="lyricsButtonIcon" />
-          </svg>
-        </button>
+        <div class="control-group feature-controls">
+          <button class="control-btn lyrics-btn"
+                  @click="toggleLyricsPanel"
+                  :class="lyricsButtonColor"
+                  :title="showLyricsPanel ? '关闭歌词' : '显示歌词'">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path :d="lyricsButtonIcon" />
+            </svg>
+          </button>
 
-        <button class="control-btn sleep-timer-btn"
-                @click="toggleSleepTimerPanel"
-                :class="sleepTimerButtonColor"
-                :title="sleepTimerEnabled ? `定时中: ${sleepTimerRemainingFormatted}` : '睡眠定时'">
-          <svg viewBox="0 0 24 24" width="22" height="22">
-            <path :d="sleepTimerButtonIcon" />
-          </svg>
-        </button>
+          <button class="control-btn sleep-timer-btn"
+                  @click="toggleSleepTimerPanel"
+                  :class="sleepTimerButtonColor"
+                  :title="sleepTimerEnabled ? `定时中: ${sleepTimerRemainingFormatted}` : '睡眠定时'">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path :d="sleepTimerButtonIcon" />
+            </svg>
+          </button>
 
-        <button class="control-btn eq-btn"
-                @click="toggleEQPanel"
-                :class="{ 'active': currentEQPreset !== EQPresets.NORMAL }"
-                :title="`音效: ${currentEQPresetName}`">
-          <svg viewBox="0 0 24 24" width="22" height="22">
-            <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
-          </svg>
-        </button>
+          <button class="control-btn eq-btn"
+                  @click="toggleEQPanel"
+                  :class="{ 'active': currentEQPreset !== EQPresets.NORMAL }"
+                  :title="`音效: ${currentEQPresetName}`">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+            </svg>
+          </button>
 
-        <button class="control-btn playback-rate-btn"
-                @click="togglePlaybackRatePanel"
-                :class="playbackRateButtonColor"
-                :title="`播放速度: ${playbackRateDisplay}`">
-          <span class="playback-rate-text">{{ playbackRateDisplay }}</span>
-        </button>
+          <button class="control-btn playback-rate-btn"
+                  @click="togglePlaybackRatePanel"
+                  :class="playbackRateButtonColor"
+                  :title="`播放速度: ${playbackRateDisplay}`">
+            <span class="playback-rate-text">{{ playbackRateDisplay }}</span>
+          </button>
 
-        <button class="control-btn lyrics-settings-btn"
-                @click="toggleLyricsSettingsPanel"
-                :title="歌词设置">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-        </button>
+          <button class="control-btn lyrics-settings-btn"
+                  @click="toggleLyricsSettingsPanel"
+                  :title="歌词设置">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
 
-        <button class="control-btn play-mode-btn" 
-                @click="togglePlayMode"
-                :class="playModeColor"
-                :title="playModeLabel">
-          <svg viewBox="0 0 24 24" width="22" height="22">
-            <path :d="playModeIcon" />
-          </svg>
-        </button>
+          <button class="control-btn play-mode-btn" 
+                  @click="togglePlayMode"
+                  :class="playModeColor"
+                  :title="playModeLabel">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path :d="playModeIcon" />
+            </svg>
+          </button>
+        </div>
 
-        <button class="control-btn skip-btn" 
-                @click="handlePrevious"
-                :disabled="playlist.length <= 1">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-          </svg>
-        </button>
+        <div class="control-group playback-controls">
+          <button class="control-btn skip-btn prev-btn"
+                  @click="handlePrevious"
+                  :disabled="playlist.length <= 1">
+            <svg viewBox="0 0 24 24" width="26" height="26">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+          </button>
         
-        <button class="control-btn play-btn" 
-                @click="togglePlay"
-                :disabled="!currentSong">
-          <svg v-if="!isPlaying" viewBox="0 0 24 24" width="32" height="32">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="32" height="32">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-          </svg>
-        </button>
+          <button class="control-btn play-btn" 
+                  @click="togglePlay"
+                  :disabled="!currentSong">
+            <svg v-if="!isPlaying" viewBox="0 0 24 24" width="36" height="36">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="36" height="36">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
         
-        <button class="control-btn skip-btn" 
-                @click="handleNext"
-                :disabled="playlist.length <= 1">
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-          </svg>
-        </button>
-
-        <div class="play-mode-indicator">
-          <span class="mode-label">{{ playModeLabel }}</span>
+          <button class="control-btn skip-btn next-btn"
+                  @click="handleNext"
+                  :disabled="playlist.length <= 1">
+            <svg viewBox="0 0 24 24" width="26" height="26">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1204,25 +1258,48 @@ onUnmounted(() => {
 
 .controls {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
   margin-bottom: 1rem;
+  padding: 0 0.5rem;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.control-group.system-controls {
+  gap: 0.3rem;
+}
+
+.control-group.feature-controls {
+  gap: 0.25rem;
+}
+
+.control-group.playback-controls {
+  gap: 0.6rem;
 }
 
 .control-btn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: all 0.2s ease;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
 }
 
 .control-btn:hover:not(:disabled) {
-  transform: scale(1.1);
+  background: var(--btn-hover);
+  transform: none;
 }
 
 .control-btn:disabled {
@@ -1234,51 +1311,51 @@ onUnmounted(() => {
   fill: var(--text-primary);
 }
 
-.lyrics-btn {
+.control-btn.active {
+  background: var(--btn-active);
+}
+
+.control-btn.active svg {
+  fill: var(--accent-primary);
+}
+
+.lyrics-btn,
+.play-mode-btn,
+.sleep-timer-btn,
+.eq-btn,
+.lyrics-settings-btn,
+.theme-btn,
+.reset-btn {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   transition: background-color 0.2s ease;
 }
 
-.lyrics-btn:hover {
+.lyrics-btn:hover,
+.play-mode-btn:hover,
+.sleep-timer-btn:hover,
+.eq-btn:hover,
+.lyrics-settings-btn:hover,
+.theme-btn:hover,
+.reset-btn:hover {
   background: var(--btn-hover);
 }
 
-.lyrics-btn.active {
-  background: var(--btn-active);
-}
-
-.lyrics-btn.active svg {
-  fill: var(--accent-gold);
-}
-
-.play-mode-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.play-mode-btn:hover {
-  background: var(--btn-hover);
-}
-
-.play-mode-btn.active {
-  background: var(--btn-active);
-}
-
-.play-mode-btn.active svg {
-  fill: var(--accent-gold);
+.lyrics-btn.active svg,
+.play-mode-btn.active svg,
+.sleep-timer-btn.active svg {
+  fill: var(--accent-primary);
 }
 
 .play-btn {
-  width: 64px;
-  height: 64px;
+  width: 60px;
+  height: 60px;
   background: var(--accent-gradient) !important;
   border-radius: 50%;
   box-shadow: var(--shadow-lg), var(--shadow-glow);
   transition: all 0.3s ease;
+  min-width: 60px;
 }
 
 .play-btn:hover:not(:disabled) {
@@ -1294,18 +1371,18 @@ onUnmounted(() => {
   opacity: 0.5;
 }
 
-.play-mode-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
+.skip-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
 }
 
-.mode-label {
-  font-size: 0.65rem;
-  color: var(--text-primary);
-  opacity: 0.7;
-  white-space: nowrap;
+.skip-btn:hover {
+  background: var(--btn-hover);
+}
+
+.play-mode-indicator {
   display: none;
 }
 
@@ -1314,6 +1391,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .volume-btn {
@@ -1975,38 +2053,13 @@ onUnmounted(() => {
   background: var(--song-item-active);
 }
 
-.theme-btn,
-.reset-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.theme-btn:hover,
-.reset-btn:hover {
-  background: var(--btn-hover);
-}
-
-.reset-btn {
-  opacity: 0.8;
-}
-
-.reset-btn:hover {
-  opacity: 1;
-}
-
-.theme-btn svg,
-.reset-btn svg {
-  stroke-width: 2;
-}
-
 .playback-rate-btn {
-  width: 42px;
+  width: 46px;
   height: 36px;
   border-radius: 18px;
   transition: all 0.2s ease;
   padding: 0;
+  border: 1px solid transparent;
 }
 
 .playback-rate-btn:hover {
@@ -2015,6 +2068,7 @@ onUnmounted(() => {
 
 .playback-rate-btn.active {
   background: var(--btn-active);
+  border-color: var(--accent-primary);
 }
 
 .playback-rate-btn.active .playback-rate-text {
@@ -2029,27 +2083,16 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
-.lyrics-settings-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.lyrics-settings-btn:hover {
-  background: var(--btn-hover);
-}
-
-.playback-rate-section,
-.lyrics-settings-section {
+.playback-rate-section {
   margin-bottom: 1rem;
   background: var(--panel-bg);
-  border-radius: 8px;
-  padding: 1rem;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border-primary);
 }
 
-.section-title {
-  margin: 0 0 0.75rem 0;
+.playback-rate-section .section-title {
+  margin: 0 0 1rem 0;
   color: var(--text-primary);
   font-size: 0.95rem;
   font-weight: 600;
@@ -2059,19 +2102,20 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .rate-option-btn {
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 0.9rem;
   border: 1px solid var(--border-primary);
   background: var(--btn-bg);
   color: var(--text-primary);
-  border-radius: 20px;
+  border-radius: 8px;
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
-  min-width: 50px;
+  min-width: 55px;
+  font-weight: 500;
 }
 
 .rate-option-btn:hover {
@@ -2086,55 +2130,132 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.setting-row {
+.lyrics-settings-section {
+  margin-bottom: 1rem;
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border-primary);
+}
+
+.settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
-.setting-row:last-child {
-  margin-bottom: 0;
-}
-
-.setting-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  min-width: 60px;
-}
-
-.setting-options {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: 250px;
-}
-
-.setting-btn {
-  padding: 0.3rem 0.6rem;
-  border: 1px solid var(--border-primary);
-  background: var(--btn-bg);
+.settings-header .section-title {
+  margin: 0;
   color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.reset-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
-  font-size: 0.75rem;
+  background: var(--btn-bg);
+  border: 1px solid var(--border-primary);
   cursor: pointer;
   transition: all 0.2s ease;
+  padding: 0;
 }
 
-.setting-btn:hover {
+.reset-settings-btn:hover {
   background: var(--btn-hover);
+  border-color: var(--accent-danger);
 }
 
-.setting-btn.active {
-  background: var(--song-item-active);
-  border-color: var(--accent-primary);
+.reset-settings-btn:hover svg {
+  stroke: var(--accent-danger);
+}
+
+.reset-settings-btn svg {
+  stroke: var(--text-secondary);
+  transition: stroke 0.2s ease;
+}
+
+.settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.setting-item {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.setting-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.setting-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+
+.setting-icon svg {
+  stroke: currentColor;
+}
+
+.setting-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.setting-value {
+  margin-left: auto;
+  font-size: 0.8rem;
   color: var(--accent-primary);
   font-weight: 600;
 }
 
-.setting-btn.mini {
-  padding: 0.25rem 0.5rem;
+.setting-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-left: 29px;
+}
+
+.option-pill {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  font-weight: 500;
+}
+
+.option-pill:hover {
+  background: var(--btn-hover);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.option-pill.active {
+  background: var(--song-item-active);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
 }
 
 .playback-rate-panel-enter-active,
