@@ -47,6 +47,13 @@ export const playbackRateLabels = {
   2: '2x'
 }
 
+export const defaultLyricsSettings = {
+  fontSize: 16,
+  lineHeight: 1.8,
+  opacity: 1,
+  autoScroll: true
+}
+
 const STORAGE_KEYS = {
   VOLUME: 'music_player_volume',
   PLAY_MODE: 'music_player_play_mode',
@@ -176,12 +183,6 @@ export function useAudioPlayer() {
   const playbackRate = ref(safeStorageGet(STORAGE_KEYS.PLAYBACK_RATE, 1))
   const playbackRateInitialized = ref(false)
 
-  const defaultLyricsSettings = {
-    fontSize: 16,
-    lineHeight: 1.8,
-    opacity: 1,
-    autoScroll: true
-  }
   const lyricsSettings = ref(safeStorageGet(STORAGE_KEYS.LYRICS_SETTINGS, defaultLyricsSettings))
 
   const fadeEnabled = ref(safeStorageGet(STORAGE_KEYS.FADE_ENABLED, true))
@@ -316,15 +317,31 @@ export function useAudioPlayer() {
     try {
       sourceNode.value = audioContext.value.createMediaElementSource(audio.value)
       
-      if (eqEnabled.value && fadeGainNode.value) {
-        sourceNode.value.connect(fadeGainNode.value)
-      } else if (fadeGainNode.value) {
+      if (fadeGainNode.value) {
         sourceNode.value.connect(fadeGainNode.value)
       } else {
         sourceNode.value.connect(audioContext.value.destination)
       }
+      
+      reconnectFadeOutput()
     } catch (err) {
       console.warn('连接音频到均衡器失败:', err)
+    }
+  }
+
+  function reconnectFadeOutput() {
+    if (!isAudioContextInitialized.value || !fadeGainNode.value) return
+    
+    try {
+      fadeGainNode.value.disconnect()
+      
+      if (eqEnabled.value && masterGain.value) {
+        fadeGainNode.value.connect(masterGain.value)
+      } else {
+        fadeGainNode.value.connect(audioContext.value.destination)
+      }
+    } catch (err) {
+      console.warn('重新连接淡入淡出节点失败:', err)
     }
   }
 
@@ -373,20 +390,7 @@ export function useAudioPlayer() {
   function toggleEQEnabled() {
     eqEnabled.value = !eqEnabled.value
     saveEQConfig()
-    
-    if (!isAudioContextInitialized.value || !sourceNode.value) return
-    
-    try {
-      sourceNode.value.disconnect()
-      
-      if (eqEnabled.value) {
-        sourceNode.value.connect(masterGain.value)
-      } else {
-        sourceNode.value.connect(audioContext.value.destination)
-      }
-    } catch (err) {
-      console.warn('切换均衡器状态失败:', err)
-    }
+    reconnectFadeOutput()
   }
 
   function saveEQConfig() {
@@ -1010,11 +1014,9 @@ export function useAudioPlayer() {
       audio.value.src = song.url
       audio.value.load()
       
-      setTimeout(() => {
-        if (isAudioContextInitialized.value) {
-          connectAudioToEQ()
-        }
-      }, 100)
+      if (isAudioContextInitialized.value) {
+        connectAudioToEQ()
+      }
     } else {
       if (currentTime.value === 0 && duration.value > 0) {
         audio.value.currentTime = 0
@@ -1022,8 +1024,11 @@ export function useAudioPlayer() {
     }
     
     if (autoPlay) {
+      ensureAudioContextRunning()
+      if (isAudioContextInitialized.value && !sourceNode.value) {
+        connectAudioToEQ()
+      }
       audio.value.play().then(() => {
-        ensureAudioContextRunning()
         fadeIn()
       }).catch(err => {
         console.error('自动播放失败:', err)
@@ -1035,6 +1040,9 @@ export function useAudioPlayer() {
   function play() {
     if (audio.value && currentSong.value) {
       ensureAudioContextRunning()
+      if (isAudioContextInitialized.value && !sourceNode.value) {
+        connectAudioToEQ()
+      }
       audio.value.play().then(() => {
         fadeIn()
       }).catch(err => {
