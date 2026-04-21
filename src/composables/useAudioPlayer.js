@@ -6,6 +6,36 @@ export const PlayMode = {
   SHUFFLE: 'shuffle'
 }
 
+export const EQPresets = {
+  NORMAL: 'normal',
+  BASS_BOOST: 'bassBoost',
+  POP: 'pop',
+  CLASSICAL: 'classical',
+  VOCAL: 'vocal',
+  CUSTOM: 'custom'
+}
+
+export const eqPresetNames = {
+  normal: '默认',
+  bassBoost: '重低音',
+  pop: '流行',
+  classical: '古典',
+  vocal: '人声增强',
+  custom: '自定义'
+}
+
+export const eqBandFrequencies = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
+export const eqBandLabels = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz']
+
+export const eqPresetValues = {
+  normal: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  bassBoost: [6, 6, 5, 3, 0, 0, 0, 0, 0, 0],
+  pop: [-1, 2, 4, 4, 2, 0, -1, -1, 0, 2],
+  classical: [4, 3, 2, 0, -1, -1, 0, 2, 3, 4],
+  vocal: [-2, -1, 0, 2, 4, 4, 3, 2, 1, 0],
+  custom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+}
+
 export function useAudioPlayer() {
   const audio = ref(null)
   const isPlaying = ref(false)
@@ -30,6 +60,20 @@ export function useAudioPlayer() {
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
   const isUserAction = ref(false)
+
+  const sleepTimerEnabled = ref(false)
+  const sleepTimerDuration = ref(0)
+  const sleepTimerRemaining = ref(0)
+  const sleepTimerInterval = ref(null)
+
+  const audioContext = ref(null)
+  const sourceNode = ref(null)
+  const masterGain = ref(null)
+  const eqFilters = ref([])
+  const eqEnabled = ref(true)
+  const currentEQPreset = ref(EQPresets.NORMAL)
+  const eqBandGains = ref([...eqPresetValues.normal])
+  const isAudioContextInitialized = ref(false)
 
   const displayTime = computed(() => {
     if (isDragging.value) {
@@ -75,11 +119,138 @@ export function useAudioPlayer() {
     }
   })
 
+  const sleepTimerRemainingFormatted = computed(() => {
+    const seconds = sleepTimerRemaining.value
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  })
+
+  const currentEQPresetName = computed(() => {
+    return eqPresetNames[currentEQPreset.value] || '默认'
+  })
+
   function formatTime(seconds) {
     if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00'
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  function initAudioContext() {
+    if (isAudioContextInitialized.value) return
+    
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      audioContext.value = new AudioContextClass()
+      
+      masterGain.value = audioContext.value.createGain()
+      masterGain.value.gain.value = volume.value
+      
+      eqFilters.value = eqBandFrequencies.map((freq, index) => {
+        const filter = audioContext.value.createBiquadFilter()
+        filter.type = 'peaking'
+        filter.frequency.value = freq
+        filter.Q.value = 1
+        filter.gain.value = eqBandGains.value[index]
+        return filter
+      })
+      
+      let prevNode = masterGain.value
+      for (let i = 0; i < eqFilters.value.length; i++) {
+        prevNode.connect(eqFilters.value[i])
+        prevNode = eqFilters.value[i]
+      }
+      
+      prevNode.connect(audioContext.value.destination)
+      
+      isAudioContextInitialized.value = true
+    } catch (err) {
+      console.warn('Web Audio API 不支持，跳过均衡器初始化:', err)
+      isAudioContextInitialized.value = false
+    }
+  }
+
+  function connectAudioToEQ() {
+    if (!audio.value || !isAudioContextInitialized.value) return
+    
+    if (sourceNode.value) {
+      try {
+        sourceNode.value.disconnect()
+      } catch (err) {
+        console.log('断开原音频连接失败，可能已断开')
+      }
+    }
+    
+    try {
+      sourceNode.value = audioContext.value.createMediaElementSource(audio.value)
+      
+      if (eqEnabled.value) {
+        sourceNode.value.connect(masterGain.value)
+      } else {
+        sourceNode.value.connect(audioContext.value.destination)
+      }
+    } catch (err) {
+      console.warn('连接音频到均衡器失败:', err)
+    }
+  }
+
+  function ensureAudioContextRunning() {
+    if (audioContext.value && audioContext.value.state === 'suspended') {
+      audioContext.value.resume().catch(err => {
+        console.warn('无法恢复音频上下文:', err)
+      })
+    }
+  }
+
+  function updateEQBand(index, gain) {
+    if (index < 0 || index >= eqBandGains.value.length) return
+    
+    const clampedGain = Math.max(-12, Math.min(12, gain))
+    eqBandGains.value[index] = clampedGain
+    
+    if (eqFilters.value[index]) {
+      eqFilters.value[index].gain.value = clampedGain
+    }
+    
+    currentEQPreset.value = EQPresets.CUSTOM
+  }
+
+  function applyEQPreset(preset) {
+    if (!eqPresetValues[preset]) return
+    
+    const values = eqPresetValues[preset]
+    
+    values.forEach((gain, index) => {
+      eqBandGains.value[index] = gain
+      if (eqFilters.value[index]) {
+        eqFilters.value[index].gain.value = gain
+      }
+    })
+    
+    currentEQPreset.value = preset
+  }
+
+  function resetEQToDefault() {
+    applyEQPreset(EQPresets.NORMAL)
+  }
+
+  function toggleEQEnabled() {
+    eqEnabled.value = !eqEnabled.value
+    
+    if (!isAudioContextInitialized.value || !sourceNode.value) return
+    
+    try {
+      sourceNode.value.disconnect()
+      
+      if (eqEnabled.value) {
+        sourceNode.value.connect(masterGain.value)
+      } else {
+        sourceNode.value.connect(audioContext.value.destination)
+      }
+    } catch (err) {
+      console.warn('切换均衡器状态失败:', err)
+    }
   }
 
   function setPlaylist(songs, autoPlayFirst = false) {
@@ -140,9 +311,12 @@ export function useAudioPlayer() {
       cleanupAudio()
     }
     
+    initAudioContext()
+    
     audio.value = new Audio()
     audio.value.volume = volume.value
     audio.value.muted = isMuted.value
+    audio.value.crossOrigin = 'anonymous'
     
     audio.value.addEventListener('timeupdate', handleTimeUpdate)
     audio.value.addEventListener('loadedmetadata', handleLoadedMetadata)
@@ -227,6 +401,7 @@ export function useAudioPlayer() {
 
   function handlePlay() {
     isPlaying.value = true
+    ensureAudioContextRunning()
   }
 
   function handlePause() {
@@ -320,6 +495,12 @@ export function useAudioPlayer() {
     if (audio.value.src !== song.url) {
       audio.value.src = song.url
       audio.value.load()
+      
+      setTimeout(() => {
+        if (isAudioContextInitialized.value) {
+          connectAudioToEQ()
+        }
+      }, 100)
     } else {
       if (currentTime.value === 0 && duration.value > 0) {
         audio.value.currentTime = 0
@@ -327,7 +508,9 @@ export function useAudioPlayer() {
     }
     
     if (autoPlay) {
-      audio.value.play().catch(err => {
+      audio.value.play().then(() => {
+        ensureAudioContextRunning()
+      }).catch(err => {
         console.error('自动播放失败:', err)
         error.value = '自动播放被浏览器阻止，请点击播放按钮'
       })
@@ -336,6 +519,7 @@ export function useAudioPlayer() {
 
   function play() {
     if (audio.value && currentSong.value) {
+      ensureAudioContextRunning()
       audio.value.play().catch(err => {
         console.error('播放失败:', err)
         error.value = '播放失败'
@@ -503,6 +687,9 @@ export function useAudioPlayer() {
     if (audio.value) {
       audio.value.volume = value
     }
+    if (masterGain.value) {
+      masterGain.value.gain.value = value
+    }
     isMuted.value = value === 0
   }
 
@@ -513,15 +700,86 @@ export function useAudioPlayer() {
     }
   }
 
+  function startSleepTimer() {
+    if (sleepTimerInterval.value) {
+      clearInterval(sleepTimerInterval.value)
+    }
+    
+    sleepTimerInterval.value = setInterval(() => {
+      if (sleepTimerRemaining.value > 0) {
+        sleepTimerRemaining.value--
+      } else {
+        stopSleepTimer()
+        pause()
+      }
+    }, 1000)
+  }
+
+  function stopSleepTimer() {
+    if (sleepTimerInterval.value) {
+      clearInterval(sleepTimerInterval.value)
+      sleepTimerInterval.value = null
+    }
+  }
+
+  function setSleepTimer(minutes) {
+    if (minutes <= 0) {
+      cancelSleepTimer()
+      return
+    }
+    
+    sleepTimerDuration.value = minutes
+    sleepTimerRemaining.value = minutes * 60
+    sleepTimerEnabled.value = true
+    
+    if (isPlaying.value) {
+      startSleepTimer()
+    }
+  }
+
+  function cancelSleepTimer() {
+    stopSleepTimer()
+    sleepTimerEnabled.value = false
+    sleepTimerDuration.value = 0
+    sleepTimerRemaining.value = 0
+  }
+
+  function adjustSleepTimer(minutes) {
+    if (!sleepTimerEnabled.value) {
+      return
+    }
+    
+    const newRemaining = Math.max(0, sleepTimerRemaining.value + minutes * 60)
+    sleepTimerRemaining.value = newRemaining
+    sleepTimerDuration.value = Math.ceil(newRemaining / 60)
+    
+    if (newRemaining <= 0) {
+      cancelSleepTimer()
+    }
+  }
+
   watch(volume, (newVolume) => {
     if (audio.value) {
       audio.value.volume = newVolume
+    }
+    if (masterGain.value) {
+      masterGain.value.gain.value = newVolume
     }
   })
 
   watch(isMuted, (newMuted) => {
     if (audio.value) {
       audio.value.muted = newMuted
+    }
+  })
+
+  watch(isPlaying, (nowPlaying) => {
+    if (sleepTimerEnabled.value) {
+      if (nowPlaying) {
+        startSleepTimer()
+      } else {
+        stopSleepTimer()
+      }
     }
   })
 
@@ -533,6 +791,13 @@ export function useAudioPlayer() {
 
   onUnmounted(() => {
     cleanupAudio()
+    stopSleepTimer()
+    
+    if (audioContext.value) {
+      audioContext.value.close().catch(err => {
+        console.log('关闭音频上下文失败:', err)
+      })
+    }
   })
 
   return {
@@ -557,6 +822,19 @@ export function useAudioPlayer() {
     hasPrevious,
     playModeLabel,
     PlayMode,
+    sleepTimerEnabled,
+    sleepTimerDuration,
+    sleepTimerRemaining,
+    sleepTimerRemainingFormatted,
+    eqEnabled,
+    currentEQPreset,
+    currentEQPresetName,
+    eqBandGains,
+    eqBandFrequencies,
+    eqBandLabels,
+    EQPresets,
+    eqPresetNames,
+    eqPresetValues,
     setPlaylist,
     setPlayMode,
     togglePlayMode,
@@ -573,6 +851,13 @@ export function useAudioPlayer() {
     finishDragging,
     setVolume,
     toggleMute,
+    setSleepTimer,
+    cancelSleepTimer,
+    adjustSleepTimer,
+    updateEQBand,
+    applyEQPreset,
+    resetEQToDefault,
+    toggleEQEnabled,
     formatTime
   }
 }
