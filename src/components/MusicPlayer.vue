@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
 import { useAudioPlayer, PlayMode } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
+import { localSongs } from '../data/songs.js'
 
 const {
   isPlaying,
@@ -59,97 +60,7 @@ const isDraggingProgress = ref(false)
 const lastScrollTime = ref(0)
 const SCROLL_THRESHOLD = 50
 
-const sampleLyrics = ref([
-  `[00:00.00]前奏
-[00:10.50]第一句歌词开始
-[00:15.30]这是第二句歌词
-[00:20.80]第三句正在播放中
-[00:25.20]第四句跟着节奏
-[00:30.00]第五句继续演唱
-[00:35.50]第六句旋律响起
-[00:40.30]第七句慢慢流淌
-[00:45.00]第八句深情演绎
-[00:50.00]间奏部分
-[01:00.00]第十句重新开始
-[01:05.00]第十一句继续
-[01:10.00]第十二句歌词
-[01:15.00]第十三句表演
-[01:20.00]第十四句高潮
-[01:25.00]第十五句副歌
-[01:30.00]第十六句过渡
-[01:35.00]第十七句主歌
-[01:40.00]第十八句结尾
-[01:45.00]歌曲即将结束
-[01:50.00]完美落幕`,
-  
-  `[00:00.00]音乐开始
-[00:08.00]这首歌曲的第一行
-[00:12.50]第二行正在演唱
-[00:17.00]第三行歌词出现
-[00:22.00]第四行继续
-[00:27.00]第五行紧随其后
-[00:32.00]第六行流淌
-[00:37.00]第七行旋律
-[00:42.00]第八行情感
-[00:47.00]间奏
-[00:55.00]第十行重新出发
-[01:00.00]第十一行
-[01:05.00]第十二行
-[01:10.00]第十三行
-[01:15.00]第十四行
-[01:20.00]第十五行
-[01:25.00]第十六行
-[01:30.00]第十七行
-[01:35.00]第十八行
-[01:40.00]第十九行
-[01:45.00]第二十行结束`,
-  
-  `[00:00.00]序曲
-[00:05.00]开始第一句
-[00:10.00]第二句歌词
-[00:15.00]第三句旋律
-[00:20.00]第四句节奏
-[00:25.00]第五句音符
-[00:30.00]第六句节拍
-[00:35.00]第七句和弦
-[00:40.00]第八句音调
-[00:45.00]过渡
-[00:55.00]第十句副歌
-[01:00.00]第十一句
-[01:05.00]第十二句
-[01:10.00]第十三句
-[01:15.00]第十四句
-[01:20.00]第十五句
-[01:25.00]第十六句
-[01:30.00]第十七句
-[01:35.00]第十八句
-[01:40.00]第十九句
-[01:45.00]终曲`
-])
-
-const sampleSongs = ref([
-  {
-    id: 1,
-    title: '示例音乐 1',
-    artist: 'SoundHelix',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-    cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20dark%20purple%20neon%20style&image_size=square'
-  },
-  {
-    id: 2,
-    title: '示例音乐 2',
-    artist: 'SoundHelix',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-    cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20blue%20cyberpunk%20style&image_size=square'
-  },
-  {
-    id: 3,
-    title: '示例音乐 3',
-    artist: 'SoundHelix',
-    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-    cover: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=music%20album%20cover%20pink%20synthwave%20style&image_size=square'
-  }
-])
+const songs = ref(localSongs)
 
 const playModeIcon = computed(() => {
   switch (playMode.value) {
@@ -176,10 +87,6 @@ const lyricsButtonIcon = computed(() => {
 
 const lyricsButtonColor = computed(() => {
   return showLyricsPanel.value ? 'active' : ''
-})
-
-const displayLyricIndex = computed(() => {
-  return currentLyricIndex.value
 })
 
 function getEventPosition(event) {
@@ -273,13 +180,13 @@ function selectSong(song) {
 }
 
 function handlePrevious() {
-  if (sampleSongs.value.length > 0) {
+  if (songs.value.length > 0) {
     previousSong()
   }
 }
 
 function handleNext() {
-  if (sampleSongs.value.length > 0) {
+  if (songs.value.length > 0) {
     nextSong()
   }
 }
@@ -337,23 +244,21 @@ watch(displayTime, (newTime) => {
 })
 
 watch(currentSong, (newSong) => {
-  if (newSong) {
-    const songIndex = sampleSongs.value.findIndex(s => s.id === newSong.id)
-    if (songIndex !== -1 && sampleLyrics.value[songIndex]) {
-      parseLyrics(sampleLyrics.value[songIndex])
-      findCurrentLyricIndex(displayTime.value)
-    } else {
-      clearLyrics()
-    }
+  if (newSong && newSong.lyrics) {
+    parseLyrics(newSong.lyrics)
+    findCurrentLyricIndex(displayTime.value)
+    nextTick(() => {
+      scrollToCurrentLyric()
+    })
   } else {
     clearLyrics()
   }
 })
 
 onMounted(() => {
-  setPlaylist(sampleSongs.value, false)
-  if (sampleLyrics.value[0]) {
-    parseLyrics(sampleLyrics.value[0])
+  setPlaylist(songs.value, false)
+  if (songs.value.length > 0 && songs.value[0].lyrics) {
+    parseLyrics(songs.value[0].lyrics)
   }
 })
 
@@ -452,7 +357,7 @@ onUnmounted(() => {
 
         <button class="control-btn skip-btn" 
                 @click="handlePrevious"
-                :disabled="sampleSongs.length <= 1">
+                :disabled="songs.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
           </svg>
@@ -471,7 +376,7 @@ onUnmounted(() => {
         
         <button class="control-btn skip-btn" 
                 @click="handleNext"
-                :disabled="sampleSongs.length <= 1">
+                :disabled="songs.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
           </svg>
@@ -502,9 +407,9 @@ onUnmounted(() => {
     </div>
 
     <div class="playlist">
-      <h4 class="playlist-title">播放列表 ({{ sampleSongs.length }})</h4>
+      <h4 class="playlist-title">播放列表 ({{ songs.length }})</h4>
       <div class="song-list">
-        <div v-for="(song, index) in sampleSongs" 
+        <div v-for="(song, index) in songs" 
              :key="song.id" 
              class="song-item"
              :class="{ 
