@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useAudioPlayer, PlayMode } from '../composables/useAudioPlayer.js'
+import { useLyrics } from '../composables/useLyrics.js'
 
 const {
   isPlaying,
@@ -11,6 +12,8 @@ const {
   isMuted,
   currentSong,
   currentIndex,
+  currentTime,
+  duration,
   isLoading,
   error,
   playMode,
@@ -28,7 +31,87 @@ const {
   togglePlayMode
 } = useAudioPlayer()
 
+const {
+  lyricsList,
+  currentLyricIndex,
+  showLyricsPanel,
+  parseLyrics,
+  findCurrentLyricIndex,
+  toggleLyricsPanel,
+  clearLyrics
+} = useLyrics()
+
 const progressBarRef = ref(null)
+const lyricsContainerRef = ref(null)
+const lyricItemRefs = ref([])
+
+const sampleLyrics = ref([
+  `[00:00.00]前奏
+[00:10.50]第一句歌词开始
+[00:15.30]这是第二句歌词
+[00:20.80]第三句正在播放中
+[00:25.20]第四句跟着节奏
+[00:30.00]第五句继续演唱
+[00:35.50]第六句旋律响起
+[00:40.30]第七句慢慢流淌
+[00:45.00]第八句深情演绎
+[00:50.00]间奏部分
+[01:00.00]第十句重新开始
+[01:05.00]第十一句继续
+[01:10.00]第十二句歌词
+[01:15.00]第十三句表演
+[01:20.00]第十四句高潮
+[01:25.00]第十五句副歌
+[01:30.00]第十六句过渡
+[01:35.00]第十七句主歌
+[01:40.00]第十八句结尾
+[01:45.00]歌曲即将结束
+[01:50.00]完美落幕`,
+  
+  `[00:00.00]音乐开始
+[00:08.00]这首歌曲的第一行
+[00:12.50]第二行正在演唱
+[00:17.00]第三行歌词出现
+[00:22.00]第四行继续
+[00:27.00]第五行紧随其后
+[00:32.00]第六行流淌
+[00:37.00]第七行旋律
+[00:42.00]第八行情感
+[00:47.00]间奏
+[00:55.00]第十行重新出发
+[01:00.00]第十一行
+[01:05.00]第十二行
+[01:10.00]第十三行
+[01:15.00]第十四行
+[01:20.00]第十五行
+[01:25.00]第十六行
+[01:30.00]第十七行
+[01:35.00]第十八行
+[01:40.00]第十九行
+[01:45.00]第二十行结束`,
+  
+  `[00:00.00]序曲
+[00:05.00]开始第一句
+[00:10.00]第二句歌词
+[00:15.00]第三句旋律
+[00:20.00]第四句节奏
+[00:25.00]第五句音符
+[00:30.00]第六句节拍
+[00:35.00]第七句和弦
+[00:40.00]第八句音调
+[00:45.00]过渡
+[00:55.00]第十句副歌
+[01:00.00]第十一句
+[01:05.00]第十二句
+[01:10.00]第十三句
+[01:15.00]第十四句
+[01:20.00]第十五句
+[01:25.00]第十六句
+[01:30.00]第十七句
+[01:35.00]第十八句
+[01:40.00]第十九句
+[01:45.00]终曲`
+])
 
 const sampleSongs = ref([
   {
@@ -71,6 +154,16 @@ const playModeColor = computed(() => {
   return playMode.value !== PlayMode.LIST_LOOP ? 'active' : ''
 })
 
+const lyricsButtonIcon = computed(() => {
+  return showLyricsPanel.value 
+    ? 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z'
+    : 'M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z'
+})
+
+const lyricsButtonColor = computed(() => {
+  return showLyricsPanel.value ? 'active' : ''
+})
+
 function handleProgressClick(event) {
   if (progressBarRef.value) {
     const rect = progressBarRef.value.getBoundingClientRect()
@@ -95,8 +188,72 @@ function handleNext() {
   }
 }
 
+function setLyricsRef(el, index) {
+  if (el) {
+    lyricItemRefs.value[index] = el
+  }
+}
+
+function scrollToCurrentLyric() {
+  if (currentLyricIndex.value >= 0 && lyricItemRefs.value[currentLyricIndex.value]) {
+    const lyricEl = lyricItemRefs.value[currentLyricIndex.value]
+    if (lyricEl && lyricsContainerRef.value) {
+      const container = lyricsContainerRef.value
+      const lyricTop = lyricEl.offsetTop
+      const containerHeight = container.clientHeight
+      const lyricHeight = lyricEl.clientHeight
+      
+      const targetScrollTop = lyricTop - (containerHeight / 2) + (lyricHeight / 2)
+      
+      container.scrollTo({
+        top: Math.max(0, targetScrollTop),
+        behavior: 'smooth'
+      })
+    }
+  }
+}
+
+watch(currentTime, (newTime) => {
+  if (lyricsList.value.length > 0) {
+    const prevIndex = currentLyricIndex.value
+    findCurrentLyricIndex(newTime)
+    
+    if (currentLyricIndex.value !== prevIndex) {
+      nextTick(() => {
+        scrollToCurrentLyric()
+      })
+    }
+  }
+})
+
+watch(currentSong, (newSong) => {
+  if (newSong) {
+    const songIndex = sampleSongs.value.findIndex(s => s.id === newSong.id)
+    if (songIndex !== -1 && sampleLyrics.value[songIndex]) {
+      parseLyrics(sampleLyrics.value[songIndex])
+      findCurrentLyricIndex(currentTime.value)
+    } else {
+      clearLyrics()
+    }
+  } else {
+    clearLyrics()
+  }
+})
+
+watch(progress, () => {
+  if (lyricsList.value.length > 0) {
+    findCurrentLyricIndex(currentTime.value)
+    nextTick(() => {
+      scrollToCurrentLyric()
+    })
+  }
+})
+
 onMounted(() => {
   setPlaylist(sampleSongs.value, false)
+  if (sampleLyrics.value[0]) {
+    parseLyrics(sampleLyrics.value[0])
+  }
 })
 </script>
 
@@ -124,6 +281,25 @@ onMounted(() => {
         </div>
       </div>
 
+      <transition name="lyrics-panel">
+        <div v-if="showLyricsPanel && lyricsList.length > 0" class="lyrics-section">
+          <div class="lyrics-container" ref="lyricsContainerRef">
+            <div v-for="(lyric, index) in lyricsList" 
+                 :key="index"
+                 ref="(el) => setLyricsRef(el, index)"
+                 class="lyric-line"
+                 :class="{ 'active': currentLyricIndex === index }">
+              {{ lyric.text }}
+            </div>
+            <div class="lyrics-bottom-padding"></div>
+          </div>
+        </div>
+      </transition>
+
+      <div v-if="showLyricsPanel && lyricsList.length === 0" class="no-lyrics">
+        <p>当前歌曲暂无歌词</p>
+      </div>
+
       <div class="progress-section">
         <div class="progress-bar-container" 
              ref="progressBarRef"
@@ -139,6 +315,15 @@ onMounted(() => {
       </div>
 
       <div class="controls">
+        <button class="control-btn lyrics-btn"
+                @click="toggleLyricsPanel"
+                :class="lyricsButtonColor"
+                :title="showLyricsPanel ? '关闭歌词' : '显示歌词'">
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <path :d="lyricsButtonIcon" />
+          </svg>
+        </button>
+
         <button class="control-btn play-mode-btn" 
                 @click="togglePlayMode"
                 :class="playModeColor"
@@ -342,6 +527,57 @@ onMounted(() => {
   50% { opacity: 1; }
 }
 
+.lyrics-section {
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.lyrics-container {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.lyric-line {
+  text-align: center;
+  padding: 0.5rem 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  transition: all 0.3s ease;
+}
+
+.lyric-line.active {
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.lyrics-bottom-padding {
+  height: 80px;
+}
+
+.no-lyrics {
+  text-align: center;
+  padding: 1rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+}
+
+.lyrics-panel-enter-active,
+.lyrics-panel-leave-active {
+  transition: all 0.3s ease;
+}
+
+.lyrics-panel-enter-from,
+.lyrics-panel-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+}
+
 .progress-section {
   margin-bottom: 1.5rem;
 }
@@ -397,7 +633,7 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
@@ -423,6 +659,25 @@ onMounted(() => {
 
 .control-btn svg {
   fill: white;
+}
+
+.lyrics-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.lyrics-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lyrics-btn.active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lyrics-btn.active svg {
+  fill: #ffd700;
 }
 
 .play-mode-btn {
@@ -637,5 +892,22 @@ onMounted(() => {
 
 .song-list::-webkit-scrollbar-thumb:hover {
   background: rgba(102, 126, 234, 0.5);
+}
+
+.lyrics-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.lyrics-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lyrics-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.lyrics-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
 </style>
