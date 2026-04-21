@@ -1,4 +1,4 @@
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 
 export const PlayMode = {
   LIST_LOOP: 'listLoop',
@@ -30,6 +30,7 @@ export function useAudioPlayer() {
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
   const isUserAction = ref(false)
+  const animationFrameId = ref(null)
 
   const displayTime = computed(() => {
     if (isDragging.value) {
@@ -80,6 +81,15 @@ export function useAudioPlayer() {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  function updateCurrentTime() {
+    if (audio.value && isPlaying.value && !isSeeking.value && !isDragging.value) {
+      if (seekTargetTime.value === null) {
+        currentTime.value = audio.value.currentTime
+      }
+    }
+    animationFrameId.value = requestAnimationFrame(updateCurrentTime)
   }
 
   function setPlaylist(songs, autoPlayFirst = false) {
@@ -157,6 +167,11 @@ export function useAudioPlayer() {
     audio.value.addEventListener('playing', handlePlaying)
     audio.value.addEventListener('seeked', handleSeeked)
     audio.value.addEventListener('seeking', handleSeeking)
+    
+    if (animationFrameId.value) {
+      cancelAnimationFrame(animationFrameId.value)
+    }
+    animationFrameId.value = requestAnimationFrame(updateCurrentTime)
   }
 
   function cleanupAudio() {
@@ -177,10 +192,14 @@ export function useAudioPlayer() {
       audio.value.pause()
       audio.value = null
     }
+    if (animationFrameId.value) {
+      cancelAnimationFrame(animationFrameId.value)
+      animationFrameId.value = null
+    }
   }
 
   function handleTimeUpdate(e) {
-    if (!isSeeking.value && seekTargetTime.value === null && !isDragging.value) {
+    if (!isSeeking.value && !isDragging.value && seekTargetTime.value === null) {
       currentTime.value = e.target.currentTime
     }
   }
@@ -467,10 +486,6 @@ export function useAudioPlayer() {
       currentTime.value = clampedTime
       
       audio.value.currentTime = clampedTime
-      
-      if (!isPlaying.value && audio.value.paused) {
-        
-      }
     }
   }
 
@@ -517,7 +532,11 @@ export function useAudioPlayer() {
     }
   })
 
-  initAudio()
+  onMounted(() => {
+    if (!audio.value) {
+      initAudio()
+    }
+  })
 
   onUnmounted(() => {
     cleanupAudio()
