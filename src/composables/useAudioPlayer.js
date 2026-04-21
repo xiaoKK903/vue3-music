@@ -827,8 +827,6 @@ export function useAudioPlayer() {
       cleanupAudio()
     }
     
-    initAudioContext()
-    
     audio.value = new Audio()
     audio.value.volume = volume.value
     audio.value.muted = isMuted.value
@@ -917,7 +915,6 @@ export function useAudioPlayer() {
 
   function handlePlay() {
     isPlaying.value = true
-    ensureAudioContextRunning()
   }
 
   function handlePause() {
@@ -1013,10 +1010,6 @@ export function useAudioPlayer() {
     if (audio.value.src !== song.url) {
       audio.value.src = song.url
       audio.value.load()
-      
-      if (isAudioContextInitialized.value) {
-        connectAudioToEQ()
-      }
     } else {
       if (currentTime.value === 0 && duration.value > 0) {
         audio.value.currentTime = 0
@@ -1024,13 +1017,7 @@ export function useAudioPlayer() {
     }
     
     if (autoPlay) {
-      ensureAudioContextRunning()
-      if (isAudioContextInitialized.value && !sourceNode.value) {
-        connectAudioToEQ()
-      }
-      audio.value.play().then(() => {
-        fadeIn()
-      }).catch(err => {
+      audio.value.play().catch(err => {
         console.error('自动播放失败:', err)
         error.value = '自动播放被浏览器阻止，请点击播放按钮'
       })
@@ -1039,13 +1026,7 @@ export function useAudioPlayer() {
 
   function play() {
     if (audio.value && currentSong.value) {
-      ensureAudioContextRunning()
-      if (isAudioContextInitialized.value && !sourceNode.value) {
-        connectAudioToEQ()
-      }
-      audio.value.play().then(() => {
-        fadeIn()
-      }).catch(err => {
+      audio.value.play().catch(err => {
         console.error('播放失败:', err)
         error.value = '播放失败'
       })
