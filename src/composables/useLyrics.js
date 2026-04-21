@@ -84,10 +84,18 @@ export function useLyrics() {
     }
 
     if (lastFoundIndex.value >= 0 && 
-        lastFoundIndex.value < lyrics.length - 1 &&
-        currentTime >= lastFoundTime.value &&
-        currentTime < lyrics[lastFoundIndex.value + 1].time) {
-      return lastFoundIndex.value
+        lastFoundIndex.value < lyrics.length &&
+        currentTime >= lastFoundTime.value) {
+      
+      if (lastFoundIndex.value < lyrics.length - 1) {
+        if (currentTime < lyrics[lastFoundIndex.value + 1].time) {
+          return lastFoundIndex.value
+        }
+      } else {
+        if (lastFoundIndex.value === lyrics.length - 1) {
+          return lastFoundIndex.value
+        }
+      }
     }
 
     let low = 0
@@ -137,6 +145,8 @@ export function useLyrics() {
     const lyrics = lyricsList.value
     if (index >= 0 && index < lyrics.length) {
       currentLyricIndex.value = index
+      lastFoundIndex.value = index
+      lastFoundTime.value = lyrics[index].time
       return lyrics[index].time
     }
     return null
