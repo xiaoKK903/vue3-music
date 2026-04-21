@@ -7,6 +7,8 @@ import {
   eqPresetNames, 
   eqPresetValues, 
   eqBandLabels,
+  playbackRates,
+  playbackRateLabels,
   resetAllToDefault
 } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
@@ -44,6 +46,12 @@ const {
   eqBandGains,
   playlist,
   isShuffled,
+  playbackRate,
+  lyricsSettings,
+  fadeEnabled,
+  fadeDuration,
+  coverRotation,
+  lastPlayback,
   setPlaylist,
   loadSong,
   togglePlay,
@@ -69,6 +77,11 @@ const {
   clearPlaylist,
   restorePlaylistOrder,
   toggleShuffle,
+  setPlaybackRate,
+  setLyricsSettings,
+  toggleFade,
+  setFadeDuration,
+  tryResumePlayback,
   formatTime
 } = useAudioPlayer()
 
@@ -261,6 +274,61 @@ function handleResetAll() {
 function toggleSettingsPanel() {
   showSettingsPanel.value = !showSettingsPanel.value
 }
+
+const showPlaybackRatePanel = ref(false)
+
+function togglePlaybackRatePanel() {
+  showPlaybackRatePanel.value = !showPlaybackRatePanel.value
+}
+
+function selectPlaybackRate(rate) {
+  setPlaybackRate(rate)
+  showPlaybackRatePanel.value = false
+}
+
+const playbackRateButtonColor = computed(() => {
+  return playbackRate.value !== 1 ? 'active' : ''
+})
+
+const playbackRateDisplay = computed(() => {
+  return playbackRateLabels[playbackRate.value] || '1x'
+})
+
+const showLyricsSettingsPanel = ref(false)
+
+function toggleLyricsSettingsPanel() {
+  showLyricsSettingsPanel.value = !showLyricsSettingsPanel.value
+}
+
+const fontSizeOptions = [12, 14, 16, 18, 20, 22, 24]
+const lineHeightOptions = [1.4, 1.6, 1.8, 2.0, 2.2, 2.4]
+const opacityOptions = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
+function handleFontSizeChange(size) {
+  setLyricsSettings({ fontSize: size })
+}
+
+function handleLineHeightChange(height) {
+  setLyricsSettings({ lineHeight: height })
+}
+
+function handleOpacityChange(opacity) {
+  setLyricsSettings({ opacity: opacity })
+}
+
+const lyricsStyle = computed(() => {
+  return {
+    fontSize: `${lyricsSettings.value.fontSize}px`,
+    lineHeight: lyricsSettings.value.lineHeight,
+    opacity: lyricsSettings.value.opacity
+  }
+})
+
+const coverRotationStyle = computed(() => {
+  return {
+    transform: `rotate(${coverRotation.value}deg)`
+  }
+})
 
 function saveLyricsConfig() {
   try {
@@ -459,8 +527,12 @@ onMounted(() => {
   initTheme()
   loadLyricsConfig()
   setPlaylist(songs.value, false)
-  if (songs.value.length > 0 && songs.value[0].lyrics) {
-    parseLyrics(songs.value[0].lyrics)
+  
+  const hasResumed = tryResumePlayback(songs.value)
+  if (!hasResumed) {
+    if (songs.value.length > 0 && songs.value[0].lyrics) {
+      parseLyrics(songs.value[0].lyrics)
+    }
   }
 })
 
@@ -482,7 +554,8 @@ onUnmounted(() => {
           <img :src="currentSong?.cover || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22%3E%3Crect fill=%22%23667eea%22 width=%22200%22 height=%22200%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 font-size=%2240%22 text-anchor=%22middle%22 fill=%22white%22 dy=%22.3em%22%3E♪%3C/text%3E%3C/svg%3E'" 
                :alt="currentSong?.title" 
                class="cover-image"
-               :class="{ 'playing': isPlaying, 'loading': isLoading }" />
+               :class="{ 'loading': isLoading }"
+               :style="coverRotationStyle" />
           <div v-if="isLoading" class="loading-overlay">
             <div class="spinner"></div>
           </div>
@@ -505,6 +578,7 @@ onUnmounted(() => {
                    'active': currentLyricIndex === index,
                    'nearby': Math.abs(currentLyricIndex - index) <= 2
                  }"
+                 :style="lyricsStyle"
                  @click="handleLyricClick(index)">
               <span class="lyric-text">{{ lyric.text }}</span>
               <span v-if="currentLyricIndex === index" class="lyric-time">
@@ -538,6 +612,66 @@ onUnmounted(() => {
                     @click="selectSleepTimer(option.minutes)">
               {{ option.label }}
             </button>
+          </div>
+        </div>
+      </transition>
+
+      <transition name="playback-rate-panel">
+        <div v-if="showPlaybackRatePanel" class="playback-rate-section">
+          <h5 class="section-title">播放速度</h5>
+          <div class="rate-options">
+            <button v-for="rate in playbackRates" 
+                    :key="rate"
+                    class="rate-option-btn"
+                    :class="{ 'active': playbackRate === rate }"
+                    @click="selectPlaybackRate(rate)">
+              {{ playbackRateLabels[rate] }}
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <transition name="lyrics-settings-panel">
+        <div v-if="showLyricsSettingsPanel" class="lyrics-settings-section">
+          <h5 class="section-title">歌词设置</h5>
+          
+          <div class="setting-row">
+            <span class="setting-label">字体大小</span>
+            <div class="setting-options">
+              <button v-for="size in fontSizeOptions" 
+                      :key="size"
+                      class="setting-btn mini"
+                      :class="{ 'active': lyricsSettings.fontSize === size }"
+                      @click="handleFontSizeChange(size)">
+                {{ size }}px
+              </button>
+            </div>
+          </div>
+          
+          <div class="setting-row">
+            <span class="setting-label">行间距</span>
+            <div class="setting-options">
+              <button v-for="lh in lineHeightOptions" 
+                      :key="lh"
+                      class="setting-btn mini"
+                      :class="{ 'active': lyricsSettings.lineHeight === lh }"
+                      @click="handleLineHeightChange(lh)">
+                {{ lh }}
+              </button>
+            </div>
+          </div>
+          
+          <div class="setting-row">
+            <span class="setting-label">透明度</span>
+            <div class="setting-options">
+              <button v-for="op in opacityOptions" 
+                      :key="op"
+                      class="setting-btn mini"
+                      :class="{ 'active': lyricsSettings.opacity === op }"
+                      @click="handleOpacityChange(op)">
+                {{ Math.round(op * 100) }}%
+              </button>
+            </div>
           </div>
         </div>
       </transition>
@@ -665,6 +799,22 @@ onUnmounted(() => {
                 :title="`音效: ${currentEQPresetName}`">
           <svg viewBox="0 0 24 24" width="22" height="22">
             <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+          </svg>
+        </button>
+
+        <button class="control-btn playback-rate-btn"
+                @click="togglePlaybackRatePanel"
+                :class="playbackRateButtonColor"
+                :title="`播放速度: ${playbackRateDisplay}`">
+          <span class="playback-rate-text">{{ playbackRateDisplay }}</span>
+        </button>
+
+        <button class="control-btn lyrics-settings-btn"
+                @click="toggleLyricsSettingsPanel"
+                :title="歌词设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
           </svg>
         </button>
 
@@ -1849,5 +1999,171 @@ onUnmounted(() => {
 .theme-btn svg,
 .reset-btn svg {
   stroke-width: 2;
+}
+
+.playback-rate-btn {
+  width: 42px;
+  height: 36px;
+  border-radius: 18px;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.playback-rate-btn:hover {
+  background: var(--btn-hover);
+}
+
+.playback-rate-btn.active {
+  background: var(--btn-active);
+}
+
+.playback-rate-btn.active .playback-rate-text {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.playback-rate-text {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.lyrics-settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.lyrics-settings-btn:hover {
+  background: var(--btn-hover);
+}
+
+.playback-rate-section,
+.lyrics-settings-section {
+  margin-bottom: 1rem;
+  background: var(--panel-bg);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.section-title {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.rate-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.rate-option-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 50px;
+}
+
+.rate-option-btn:hover {
+  background: var(--btn-hover);
+  border-color: var(--border-secondary);
+}
+
+.rate-option-btn.active {
+  background: var(--song-item-active);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.setting-row:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-width: 60px;
+}
+
+.setting-options {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 250px;
+}
+
+.setting-btn {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.setting-btn:hover {
+  background: var(--btn-hover);
+}
+
+.setting-btn.active {
+  background: var(--song-item-active);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.setting-btn.mini {
+  padding: 0.25rem 0.5rem;
+}
+
+.playback-rate-panel-enter-active,
+.playback-rate-panel-leave-active,
+.lyrics-settings-panel-enter-active,
+.lyrics-settings-panel-leave-active {
+  transition: all 0.3s ease;
+}
+
+.playback-rate-panel-enter-from,
+.playback-rate-panel-leave-to,
+.lyrics-settings-panel-enter-from,
+.lyrics-settings-panel-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.cover-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.1s linear;
+}
+
+.cover-image.loading {
+  opacity: 0.5;
 }
 </style>
