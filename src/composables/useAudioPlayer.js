@@ -9,8 +9,15 @@ export const PlayMode = {
 export function useAudioPlayer() {
   const audio = ref(null)
   const isPlaying = ref(false)
+  
   const currentTime = ref(0)
   const duration = ref(0)
+  
+  const seekTargetTime = ref(null)
+  const isSeeking = ref(false)
+  const isDragging = ref(false)
+  const dragTime = ref(0)
+  
   const volume = ref(1)
   const isMuted = ref(false)
   const currentSong = ref(null)
@@ -23,15 +30,24 @@ export function useAudioPlayer() {
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
   const isUserAction = ref(false)
-  const isSeeking = ref(false)
+
+  const displayTime = computed(() => {
+    if (isDragging.value) {
+      return dragTime.value
+    }
+    if (seekTargetTime.value !== null) {
+      return seekTargetTime.value
+    }
+    return currentTime.value
+  })
 
   const progress = computed(() => {
     if (duration.value === 0) return 0
-    return (currentTime.value / duration.value) * 100
+    return (displayTime.value / duration.value) * 100
   })
 
   const formattedCurrentTime = computed(() => {
-    return formatTime(currentTime.value)
+    return formatTime(displayTime.value)
   })
 
   const formattedDuration = computed(() => {
@@ -164,7 +180,7 @@ export function useAudioPlayer() {
   }
 
   function handleTimeUpdate(e) {
-    if (!isSeeking.value) {
+    if (!isSeeking.value && seekTargetTime.value === null && !isDragging.value) {
       currentTime.value = e.target.currentTime
     }
   }
@@ -181,6 +197,7 @@ export function useAudioPlayer() {
       if (audio.value) {
         audio.value.currentTime = 0
         currentTime.value = 0
+        seekTargetTime.value = null
         audio.value.play().catch(err => {
           console.error('单曲循环播放失败:', err)
         })
@@ -194,6 +211,7 @@ export function useAudioPlayer() {
       loadSong(playlist.value[0], true, false)
     } else {
       currentTime.value = 0
+      seekTargetTime.value = null
     }
   }
 
@@ -227,6 +245,10 @@ export function useAudioPlayer() {
 
   function handleSeeked() {
     isSeeking.value = false
+    if (audio.value) {
+      currentTime.value = audio.value.currentTime
+      seekTargetTime.value = null
+    }
   }
 
   function handleSeeking() {
@@ -246,6 +268,11 @@ export function useAudioPlayer() {
     if (!audio.value) {
       initAudio()
     }
+    
+    currentTime.value = 0
+    seekTargetTime.value = null
+    isDragging.value = false
+    dragTime.value = 0
     
     if (recordHistory && currentSong.value && currentSong.value.id !== song.id) {
       if (historyStack.value.length === 0 || 
@@ -406,8 +433,7 @@ export function useAudioPlayer() {
     if (len === 0) return
     
     if (audio.value && audio.value.currentTime > 3) {
-      audio.value.currentTime = 0
-      currentTime.value = 0
+      seekToTime(0)
       return
     }
     
@@ -429,9 +455,39 @@ export function useAudioPlayer() {
   function seek(progressPercent) {
     if (audio.value && duration.value > 0) {
       const newTime = (progressPercent / 100) * duration.value
-      audio.value.currentTime = newTime
-      currentTime.value = newTime
+      seekToTime(newTime)
     }
+  }
+
+  function seekToTime(time) {
+    if (audio.value && duration.value > 0) {
+      const clampedTime = Math.max(0, Math.min(time, duration.value))
+      
+      seekTargetTime.value = clampedTime
+      currentTime.value = clampedTime
+      
+      audio.value.currentTime = clampedTime
+      
+      if (!isPlaying.value && audio.value.paused) {
+        
+      }
+    }
+  }
+
+  function startDragging() {
+    isDragging.value = true
+    dragTime.value = currentTime.value
+  }
+
+  function updateDragTime(progressPercent) {
+    if (duration.value > 0) {
+      dragTime.value = (progressPercent / 100) * duration.value
+    }
+  }
+
+  function finishDragging(progressPercent) {
+    isDragging.value = false
+    seek(progressPercent)
   }
 
   function setVolume(value) {
@@ -471,6 +527,7 @@ export function useAudioPlayer() {
     audio,
     isPlaying,
     currentTime,
+    displayTime,
     duration,
     progress,
     volume,
@@ -481,6 +538,9 @@ export function useAudioPlayer() {
     isLoading,
     error,
     playMode,
+    isSeeking,
+    isDragging,
+    seekTargetTime,
     hasNext,
     hasPrevious,
     playModeLabel,
@@ -495,7 +555,12 @@ export function useAudioPlayer() {
     nextSong,
     previousSong,
     seek,
+    seekToTime,
+    startDragging,
+    updateDragTime,
+    finishDragging,
     setVolume,
-    toggleMute
+    toggleMute,
+    formatTime
   }
 }
