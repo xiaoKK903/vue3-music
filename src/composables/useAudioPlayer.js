@@ -36,6 +36,84 @@ export const eqPresetValues = {
   custom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 
+const STORAGE_KEYS = {
+  VOLUME: 'music_player_volume',
+  PLAY_MODE: 'music_player_play_mode',
+  EQ_ENABLED: 'music_player_eq_enabled',
+  EQ_PRESET: 'music_player_eq_preset',
+  EQ_GAINS: 'music_player_eq_gains',
+  SLEEP_TIMER: 'music_player_sleep_timer',
+  PLAYLIST_ORDER: 'music_player_playlist_order'
+}
+
+function safeStorageGet(key, defaultValue) {
+  try {
+    const stored = localStorage.getItem(key)
+    if (stored === null || stored === undefined || stored === 'undefined') {
+      return defaultValue
+    }
+    try {
+      return JSON.parse(stored)
+    } catch (parseErr) {
+      console.warn(`Failed to parse localStorage key "${key}":`, parseErr)
+      return defaultValue
+    }
+  } catch (err) {
+    console.warn(`Failed to get localStorage key "${key}":`, err)
+    return defaultValue
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    if (value === undefined || value === null) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, JSON.stringify(value))
+    }
+    return true
+  } catch (err) {
+    console.warn(`Failed to set localStorage key "${key}":`, err)
+    return false
+  }
+}
+
+function safeStorageRemove(key) {
+  try {
+    localStorage.removeItem(key)
+    return true
+  } catch (err) {
+    console.warn(`Failed to remove localStorage key "${key}":`, err)
+    return false
+  }
+}
+
+function deepClone(obj) {
+  try {
+    return JSON.parse(JSON.stringify(obj))
+  } catch (err) {
+    console.warn('Deep clone failed:', err)
+    return obj
+  }
+}
+
+export function resetAllToDefault() {
+  try {
+    Object.values(STORAGE_KEYS).forEach(key => {
+      localStorage.removeItem(key)
+    })
+    localStorage.removeItem('music_player_theme')
+    localStorage.removeItem('music_player_lyrics_show')
+    localStorage.removeItem('music_player_lyrics_font')
+    localStorage.removeItem('music_player_config')
+    localStorage.removeItem('music_player_playlist_order')
+    return true
+  } catch (err) {
+    console.warn('Failed to reset all storage:', err)
+    return false
+  }
+}
+
 export function useAudioPlayer() {
   const audio = ref(null)
   const isPlaying = ref(false)
@@ -48,14 +126,15 @@ export function useAudioPlayer() {
   const isDragging = ref(false)
   const dragTime = ref(0)
   
-  const volume = ref(1)
+  const volume = ref(safeStorageGet(STORAGE_KEYS.VOLUME, 1))
   const isMuted = ref(false)
   const currentSong = ref(null)
   const currentIndex = ref(-1)
   const playlist = ref([])
+  const originalPlaylist = ref([])
   const isLoading = ref(false)
   const error = ref(null)
-  const playMode = ref(PlayMode.LIST_LOOP)
+  const playMode = ref(safeStorageGet(STORAGE_KEYS.PLAY_MODE, PlayMode.LIST_LOOP))
   const historyStack = ref([])
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
@@ -70,10 +149,13 @@ export function useAudioPlayer() {
   const sourceNode = ref(null)
   const masterGain = ref(null)
   const eqFilters = ref([])
-  const eqEnabled = ref(true)
-  const currentEQPreset = ref(EQPresets.NORMAL)
-  const eqBandGains = ref([...eqPresetValues.normal])
+  const eqEnabled = ref(safeStorageGet(STORAGE_KEYS.EQ_ENABLED, true))
+  const currentEQPreset = ref(safeStorageGet(STORAGE_KEYS.EQ_PRESET, EQPresets.NORMAL))
+  const eqBandGains = ref(safeStorageGet(STORAGE_KEYS.EQ_GAINS, [...eqPresetValues.normal]))
   const isAudioContextInitialized = ref(false)
+
+  const playlistLoaded = ref(false)
+  const isShuffled = ref(playMode.value === PlayMode.SHUFFLE)
 
   const displayTime = computed(() => {
     if (isDragging.value) {
@@ -214,6 +296,7 @@ export function useAudioPlayer() {
     }
     
     currentEQPreset.value = EQPresets.CUSTOM
+    saveEQConfig()
   }
 
   function applyEQPreset(preset) {
@@ -229,6 +312,7 @@ export function useAudioPlayer() {
     })
     
     currentEQPreset.value = preset
+    saveEQConfig()
   }
 
   function resetEQToDefault() {
@@ -237,6 +321,7 @@ export function useAudioPlayer() {
 
   function toggleEQEnabled() {
     eqEnabled.value = !eqEnabled.value
+    saveEQConfig()
     
     if (!isAudioContextInitialized.value || !sourceNode.value) return
     
@@ -253,23 +338,271 @@ export function useAudioPlayer() {
     }
   }
 
+  function saveEQConfig() {
+    safeStorageSet(STORAGE_KEYS.EQ_ENABLED, eqEnabled.value)
+    safeStorageSet(STORAGE_KEYS.EQ_PRESET, currentEQPreset.value)
+    safeStorageSet(STORAGE_KEYS.EQ_GAINS, [...eqBandGains.value])
+  }
+
+  function reorderPlaylist(fromIndex, toIndex) {
+    if (fromIndex < 0 || fromIndex >= playlist.value.length) return
+    if (toIndex < 0 || toIndex >= playlist.value.length) return
+    if (fromIndex === toIndex) return
+
+    const items = playlist.value.splice(fromIndex, 1)
+    playlist.value.splice(toIndex, 0, ...items)
+
+    if (currentIndex.value === fromIndex) {
+      currentIndex.value = toIndex
+    } else if (fromIndex < currentIndex.value && toIndex >= currentIndex.value) {
+      currentIndex.value--
+    } else if (fromIndex > currentIndex.value && toIndex <= currentIndex.value) {
+      currentIndex.value++
+    }
+
+    savePlaylistOrder()
+  }
+
+  function moveToTop(index) {
+    if (index <= 0 || index >= playlist.value.length) return
+
+    const item = playlist.value.splice(index, 1)[0]
+    playlist.value.unshift(item)
+
+    if (currentIndex.value === index) {
+      currentIndex.value = 0
+    } else if (index > currentIndex.value) {
+      currentIndex.value++
+    } else if (index < currentIndex.value) {
+      currentIndex.value--
+    }
+
+    savePlaylistOrder()
+  }
+
+  function removeFromPlaylist(index) {
+    if (index < 0 || index >= playlist.value.length) return
+
+    const removedSong = playlist.value[index]
+    playlist.value.splice(index, 1)
+
+    if (playlist.value.length === 0) {
+      currentIndex.value = -1
+      currentSong.value = null
+      pause()
+      audio.value.src = ''
+      return
+    }
+
+    if (index === currentIndex.value) {
+      if (index >= playlist.value.length) {
+        currentIndex.value = playlist.value.length - 1
+      }
+      if (playlist.value.length > 0 && currentIndex.value >= 0) {
+        loadSong(playlist.value[currentIndex.value], isPlaying.value, false)
+      }
+    } else if (index < currentIndex.value) {
+      currentIndex.value--
+    }
+
+    savePlaylistOrder()
+  }
+
+  function clearPlaylist() {
+    playlist.value = []
+    originalPlaylist.value = []
+    currentIndex.value = -1
+    currentSong.value = null
+    pause()
+    if (audio.value) {
+      audio.value.src = ''
+    }
+    safeStorageRemove(STORAGE_KEYS.PLAYLIST_ORDER)
+  }
+
+  function shufflePlaylist() {
+    if (playlist.value.length <= 1) return
+
+    const currentSongId = currentSong.value ? currentSong.value.id : null
+    
+    const indices = playlist.value.map((_, index) => index)
+    
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]]
+    }
+    
+    const newPlaylist = indices.map(index => playlist.value[index])
+    
+    if (currentSongId) {
+      const currentPos = newPlaylist.findIndex(s => s.id === currentSongId)
+      if (currentPos > 0) {
+        const [song] = newPlaylist.splice(currentPos, 1)
+        newPlaylist.unshift(song)
+      }
+    }
+    
+    playlist.value = newPlaylist
+    
+    if (currentSongId) {
+      const newIndex = playlist.value.findIndex(s => s.id === currentSongId)
+      if (newIndex !== -1) {
+        currentIndex.value = newIndex
+      }
+    }
+
+    isShuffled.value = true
+    savePlaylistOrder()
+  }
+
+  function restorePlaylistOrder() {
+    if (originalPlaylist.value.length === 0) return
+    
+    const currentSongId = currentSong.value ? currentSong.value.id : null
+    
+    playlist.value = deepClone(originalPlaylist.value)
+    
+    if (currentSongId) {
+      const newIndex = playlist.value.findIndex(s => s.id === currentSongId)
+      if (newIndex !== -1) {
+        currentIndex.value = newIndex
+      }
+    }
+
+    isShuffled.value = false
+    savePlaylistOrder()
+  }
+
+  function toggleShuffle() {
+    if (isShuffled.value) {
+      restorePlaylistOrder()
+      if (playMode.value === PlayMode.SHUFFLE) {
+        setPlayMode(PlayMode.LIST_LOOP)
+      }
+    } else {
+      if (originalPlaylist.value.length === 0) {
+        originalPlaylist.value = deepClone(playlist.value)
+      }
+      shufflePlaylist()
+      if (playMode.value !== PlayMode.SHUFFLE) {
+        setPlayMode(PlayMode.SHUFFLE)
+      }
+    }
+  }
+
+  function savePlaylistOrder() {
+    try {
+      if (!playlist.value || !Array.isArray(playlist.value)) return
+      
+      const orderData = {
+        ids: playlist.value.map(song => song.id),
+        currentIndex: Math.max(0, Math.min(currentIndex.value, Math.max(0, playlist.value.length - 1))),
+        isShuffled: isShuffled.value,
+        timestamp: Date.now()
+      }
+      safeStorageSet(STORAGE_KEYS.PLAYLIST_ORDER, orderData)
+    } catch (err) {
+      console.warn('Failed to save playlist order:', err)
+    }
+  }
+
+  function loadPlaylistOrder(songs) {
+    try {
+      const stored = safeStorageGet(STORAGE_KEYS.PLAYLIST_ORDER, null)
+      
+      if (!stored || !stored.ids || !Array.isArray(stored.ids)) {
+        return null
+      }
+
+      const idToSong = new Map()
+      songs.forEach(song => {
+        if (song && song.id) {
+          idToSong.set(song.id, song)
+        }
+      })
+
+      const orderedSongs = []
+      const usedIds = new Set()
+      
+      stored.ids.forEach(id => {
+        if (idToSong.has(id) && !usedIds.has(id)) {
+          orderedSongs.push(idToSong.get(id))
+          usedIds.add(id)
+        }
+      })
+
+      songs.forEach(song => {
+        if (song && song.id && !usedIds.has(song.id)) {
+          orderedSongs.push(song)
+          usedIds.add(song.id)
+        }
+      })
+
+      if (orderedSongs.length === 0) {
+        return null
+      }
+
+      return {
+        songs: orderedSongs,
+        currentIndex: stored.currentIndex || 0,
+        isShuffled: stored.isShuffled || false
+      }
+    } catch (err) {
+      console.warn('Failed to load playlist order:', err)
+      return null
+    }
+  }
+
   function setPlaylist(songs, autoPlayFirst = false) {
-    playlist.value = songs
+    if (!songs || !Array.isArray(songs) || songs.length === 0) {
+      return
+    }
+
+    const validSongs = songs.filter(s => s && s.id && s.url)
+    if (validSongs.length === 0) {
+      return
+    }
+
+    originalPlaylist.value = deepClone(validSongs)
+    
+    const savedOrder = loadPlaylistOrder(validSongs)
+    if (savedOrder) {
+      playlist.value = savedOrder.songs
+      isShuffled.value = savedOrder.isShuffled
+    } else {
+      playlist.value = deepClone(validSongs)
+      isShuffled.value = false
+    }
+    
     historyStack.value = []
     shuffleHistory.value = []
     shuffleIndex.value = -1
     
-    if (songs.length > 0) {
-      loadSong(songs[0], autoPlayFirst, false)
+    if (savedOrder && savedOrder.currentIndex >= 0 && savedOrder.currentIndex < playlist.value.length) {
+      loadSong(playlist.value[savedOrder.currentIndex], autoPlayFirst, false)
+    } else if (playlist.value.length > 0) {
+      loadSong(playlist.value[0], autoPlayFirst, false)
     }
+
+    playlistLoaded.value = true
   }
 
   function setPlayMode(mode) {
     if (Object.values(PlayMode).includes(mode)) {
       playMode.value = mode
+      safeStorageSet(STORAGE_KEYS.PLAY_MODE, mode)
       
       if (mode === PlayMode.SHUFFLE) {
-        generateShuffleOrder()
+        if (!isShuffled.value) {
+          if (originalPlaylist.value.length === 0) {
+            originalPlaylist.value = deepClone(playlist.value)
+          }
+          shufflePlaylist()
+        }
+      } else {
+        if (isShuffled.value && originalPlaylist.value.length > 0) {
+          restorePlaylistOrder()
+        }
       }
     }
   }
@@ -492,6 +825,8 @@ export function useAudioPlayer() {
       }
     }
     
+    savePlaylistOrder()
+    
     if (audio.value.src !== song.url) {
       audio.value.src = song.url
       audio.value.load()
@@ -683,14 +1018,18 @@ export function useAudioPlayer() {
   }
 
   function setVolume(value) {
-    volume.value = value
+    const clampedValue = Math.max(0, Math.min(1, value))
+    volume.value = clampedValue
+    
     if (audio.value) {
-      audio.value.volume = value
+      audio.value.volume = clampedValue
     }
     if (masterGain.value) {
-      masterGain.value.gain.value = value
+      masterGain.value.gain.value = clampedValue
     }
-    isMuted.value = value === 0
+    
+    isMuted.value = clampedValue === 0
+    safeStorageSet(STORAGE_KEYS.VOLUME, clampedValue)
   }
 
   function toggleMute() {
@@ -708,9 +1047,11 @@ export function useAudioPlayer() {
     sleepTimerInterval.value = setInterval(() => {
       if (sleepTimerRemaining.value > 0) {
         sleepTimerRemaining.value--
+        saveSleepTimerConfig()
       } else {
         stopSleepTimer()
         pause()
+        saveSleepTimerConfig()
       }
     }, 1000)
   }
@@ -720,6 +1061,14 @@ export function useAudioPlayer() {
       clearInterval(sleepTimerInterval.value)
       sleepTimerInterval.value = null
     }
+  }
+
+  function saveSleepTimerConfig() {
+    safeStorageSet(STORAGE_KEYS.SLEEP_TIMER, {
+      enabled: sleepTimerEnabled.value,
+      duration: sleepTimerDuration.value,
+      remaining: sleepTimerRemaining.value
+    })
   }
 
   function setSleepTimer(minutes) {
@@ -732,6 +1081,8 @@ export function useAudioPlayer() {
     sleepTimerRemaining.value = minutes * 60
     sleepTimerEnabled.value = true
     
+    saveSleepTimerConfig()
+    
     if (isPlaying.value) {
       startSleepTimer()
     }
@@ -742,6 +1093,7 @@ export function useAudioPlayer() {
     sleepTimerEnabled.value = false
     sleepTimerDuration.value = 0
     sleepTimerRemaining.value = 0
+    saveSleepTimerConfig()
   }
 
   function adjustSleepTimer(minutes) {
@@ -755,6 +1107,19 @@ export function useAudioPlayer() {
     
     if (newRemaining <= 0) {
       cancelSleepTimer()
+    } else {
+      saveSleepTimerConfig()
+    }
+  }
+
+  function loadSleepTimerConfig() {
+    const config = safeStorageGet(STORAGE_KEYS.SLEEP_TIMER, null)
+    if (config) {
+      if (config.enabled && config.remaining > 0) {
+        sleepTimerEnabled.value = config.enabled
+        sleepTimerDuration.value = config.duration || 0
+        sleepTimerRemaining.value = config.remaining || 0
+      }
     }
   }
 
@@ -787,6 +1152,7 @@ export function useAudioPlayer() {
     if (!audio.value) {
       initAudio()
     }
+    loadSleepTimerConfig()
   })
 
   onUnmounted(() => {
@@ -812,6 +1178,7 @@ export function useAudioPlayer() {
     currentSong,
     currentIndex,
     playlist,
+    originalPlaylist,
     isLoading,
     error,
     playMode,
@@ -835,6 +1202,8 @@ export function useAudioPlayer() {
     EQPresets,
     eqPresetNames,
     eqPresetValues,
+    isShuffled,
+    playlistLoaded,
     setPlaylist,
     setPlayMode,
     togglePlayMode,
@@ -858,6 +1227,14 @@ export function useAudioPlayer() {
     applyEQPreset,
     resetEQToDefault,
     toggleEQEnabled,
+    reorderPlaylist,
+    moveToTop,
+    removeFromPlaylist,
+    clearPlaylist,
+    shufflePlaylist,
+    restorePlaylistOrder,
+    toggleShuffle,
+    savePlaylistOrder,
     formatTime
   }
 }

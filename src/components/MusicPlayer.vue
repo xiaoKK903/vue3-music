@@ -1,7 +1,16 @@
 <script setup>
 import { ref, onMounted, computed, watch, nextTick, onUnmounted } from 'vue'
-import { useAudioPlayer, PlayMode, EQPresets, eqPresetNames, eqPresetValues, eqBandLabels } from '../composables/useAudioPlayer.js'
+import { 
+  useAudioPlayer, 
+  PlayMode, 
+  EQPresets, 
+  eqPresetNames, 
+  eqPresetValues, 
+  eqBandLabels,
+  resetAllToDefault
+} from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
+import { useTheme, THEME_MODES } from '../composables/useTheme.js'
 import { localSongs } from '../data/songs.js'
 
 const {
@@ -33,6 +42,8 @@ const {
   currentEQPreset,
   currentEQPresetName,
   eqBandGains,
+  playlist,
+  isShuffled,
   setPlaylist,
   loadSong,
   togglePlay,
@@ -52,6 +63,12 @@ const {
   applyEQPreset,
   resetEQToDefault,
   toggleEQEnabled,
+  reorderPlaylist,
+  moveToTop,
+  removeFromPlaylist,
+  clearPlaylist,
+  restorePlaylistOrder,
+  toggleShuffle,
   formatTime
 } = useAudioPlayer()
 
@@ -166,6 +183,111 @@ function getEQBandColor(bandIndex) {
   return '#6bcb77'
 }
 
+const {
+  currentTheme,
+  isDark,
+  initTheme,
+  setTheme,
+  toggleTheme
+} = useTheme()
+
+const showSettingsPanel = ref(false)
+
+const dragOverIndex = ref(-1)
+const draggingIndex = ref(-1)
+const isDraggingSong = ref(false)
+
+function handleDragStart(index) {
+  draggingIndex.value = index
+  isDraggingSong.value = true
+}
+
+function handleDragOver(event, index) {
+  event.preventDefault()
+  if (index !== draggingIndex.value) {
+    dragOverIndex.value = index
+  }
+}
+
+function handleDragLeave() {
+  dragOverIndex.value = -1
+}
+
+function handleDrop(event, index) {
+  event.preventDefault()
+  if (draggingIndex.value !== -1 && index !== draggingIndex.value) {
+    reorderPlaylist(draggingIndex.value, index)
+  }
+  draggingIndex.value = -1
+  dragOverIndex.value = -1
+  isDraggingSong.value = false
+}
+
+function handleDragEnd() {
+  draggingIndex.value = -1
+  dragOverIndex.value = -1
+  isDraggingSong.value = false
+}
+
+function handleMoveToTop(index) {
+  moveToTop(index)
+}
+
+function handleRemoveSong(index) {
+  removeFromPlaylist(index)
+}
+
+function handleClearPlaylist() {
+  if (confirm('确定要清空播放列表吗？')) {
+    clearPlaylist()
+  }
+}
+
+function handleToggleShuffle() {
+  toggleShuffle()
+}
+
+function handleToggleTheme() {
+  toggleTheme()
+}
+
+function handleResetAll() {
+  if (confirm('确定要重置所有设置为默认状态吗？此操作不可撤销。')) {
+    resetAllToDefault()
+    window.location.reload()
+  }
+}
+
+function toggleSettingsPanel() {
+  showSettingsPanel.value = !showSettingsPanel.value
+}
+
+function saveLyricsConfig() {
+  try {
+    localStorage.setItem('music_player_lyrics_show', JSON.stringify(showLyricsPanel.value))
+  } catch (err) {
+    console.warn('Failed to save lyrics config:', err)
+  }
+}
+
+function loadLyricsConfig() {
+  try {
+    const stored = localStorage.getItem('music_player_lyrics_show')
+    if (stored !== null) {
+      const saved = JSON.parse(stored)
+      if (typeof saved === 'boolean') {
+        showLyricsPanel.value = saved
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load lyrics config:', err)
+  }
+}
+
+watch(showLyricsPanel, () => {
+  saveLyricsConfig()
+})
+
 function getEventPosition(event) {
   if (event.touches && event.touches.length > 0) {
     return {
@@ -257,13 +379,13 @@ function selectSong(song) {
 }
 
 function handlePrevious() {
-  if (songs.value.length > 0) {
+  if (playlist.value.length > 0) {
     previousSong()
   }
 }
 
 function handleNext() {
-  if (songs.value.length > 0) {
+  if (playlist.value.length > 0) {
     nextSong()
   }
 }
@@ -334,6 +456,8 @@ watch(currentSong, (newSong) => {
 })
 
 onMounted(() => {
+  initTheme()
+  loadLyricsConfig()
   setPlaylist(songs.value, false)
   if (songs.value.length > 0 && songs.value[0].lyrics) {
     parseLyrics(songs.value[0].lyrics)
@@ -497,6 +621,26 @@ onUnmounted(() => {
       </div>
 
       <div class="controls">
+        <button class="control-btn theme-btn"
+                @click="handleToggleTheme"
+                :title="isDark ? '切换为浅色主题' : '切换为深色主题'">
+          <svg v-if="isDark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+          </svg>
+        </button>
+
+        <button class="control-btn reset-btn"
+                @click="handleResetAll"
+                title="重置所有设置为默认">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+        </button>
+
         <button class="control-btn lyrics-btn"
                 @click="toggleLyricsPanel"
                 :class="lyricsButtonColor"
@@ -535,7 +679,7 @@ onUnmounted(() => {
 
         <button class="control-btn skip-btn" 
                 @click="handlePrevious"
-                :disabled="songs.length <= 1">
+                :disabled="playlist.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
           </svg>
@@ -554,7 +698,7 @@ onUnmounted(() => {
         
         <button class="control-btn skip-btn" 
                 @click="handleNext"
-                :disabled="songs.length <= 1">
+                :disabled="playlist.length <= 1">
           <svg viewBox="0 0 24 24" width="24" height="24">
             <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
           </svg>
@@ -585,16 +729,48 @@ onUnmounted(() => {
     </div>
 
     <div class="playlist">
-      <h4 class="playlist-title">播放列表 ({{ songs.length }})</h4>
+      <div class="playlist-header">
+        <h4 class="playlist-title">
+          播放列表 ({{ playlist.length }})
+          <span v-if="isShuffled" class="shuffle-badge">乱序</span>
+        </h4>
+        <div class="playlist-actions">
+          <button class="action-btn mini" @click="handleToggleShuffle" :class="{ 'active': isShuffled }">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
+            </svg>
+          </button>
+          <button class="action-btn mini danger" @click="handleClearPlaylist">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      </div>
       <div class="song-list">
-        <div v-for="(song, index) in songs" 
-             :key="song.id" 
+        <div v-if="playlist.length === 0" class="empty-playlist">
+          <span>播放列表为空</span>
+        </div>
+        <div v-for="(song, index) in playlist" 
+             :key="song.id + '-' + index" 
              class="song-item"
              :class="{ 
                'active': currentSong?.id === song.id,
-               'current': currentIndex === index
+               'current': currentIndex === index,
+               'drag-over': dragOverIndex === index,
+               'dragging': draggingIndex === index
              }"
-             @click="selectSong(song)">
+             draggable="true"
+             @dragstart="handleDragStart(index)"
+             @dragover="handleDragOver($event, index)"
+             @dragleave="handleDragLeave"
+             @drop="handleDrop($event, index)"
+             @dragend="handleDragEnd">
+          <div class="drag-handle" draggable="true">
+            <svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M8 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm8-16a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>
+            </svg>
+          </div>
           <div class="song-number">
             <span v-if="currentSong?.id === song.id && isPlaying" class="playing-indicator">
               <span class="bar"></span>
@@ -603,10 +779,22 @@ onUnmounted(() => {
             </span>
             <span v-else class="number">{{ index + 1 }}</span>
           </div>
-          <img :src="song.cover" :alt="song.title" class="song-cover" />
-          <div class="song-info-mini">
+          <img :src="song.cover" :alt="song.title" class="song-cover" @click.stop="selectSong(song)" />
+          <div class="song-info-mini" @click.stop="selectSong(song)">
             <span class="song-title-mini">{{ song.title }}</span>
             <span class="song-artist-mini">{{ song.artist }}</span>
+          </div>
+          <div class="song-actions">
+            <button class="action-btn mini" @click.stop="handleMoveToTop(index)" :disabled="index === 0">
+              <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 19V5M5 12l7-7 7 7"/>
+              </svg>
+            </button>
+            <button class="action-btn mini danger" @click.stop="handleRemoveSong(index)">
+              <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -1517,5 +1705,141 @@ onUnmounted(() => {
   margin-bottom: 0;
   padding-top: 0;
   padding-bottom: 0;
+}
+
+.playlist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.shuffle-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 10px;
+  margin-left: 0.5rem;
+  font-weight: 500;
+}
+
+.empty-playlist {
+  text-align: center;
+  padding: 2rem;
+  color: #999;
+  font-size: 0.9rem;
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  cursor: grab;
+  color: #aaa;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.drag-handle:hover {
+  opacity: 1;
+  color: #666;
+}
+
+.song-item.dragging {
+  opacity: 0.5;
+}
+
+.song-item.drag-over {
+  border-top: 2px solid #667eea;
+}
+
+.song-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.song-item:hover .song-actions {
+  opacity: 1;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(102, 126, 234, 0.1);
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #667eea;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: rgba(102, 126, 234, 0.2);
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn.mini {
+  padding: 0.3rem;
+  width: 24px;
+  height: 24px;
+}
+
+.action-btn.mini svg {
+  width: 14px;
+  height: 14px;
+}
+
+.action-btn.danger {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.action-btn.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.action-btn.active {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+}
+
+.theme-btn,
+.reset-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.theme-btn:hover,
+.reset-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.reset-btn {
+  opacity: 0.8;
+}
+
+.reset-btn:hover {
+  opacity: 1;
+}
+
+.theme-btn svg,
+.reset-btn svg {
+  stroke-width: 2;
 }
 </style>
