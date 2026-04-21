@@ -36,6 +36,17 @@ export const eqPresetValues = {
   custom: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }
 
+export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+export const playbackRateLabels = {
+  0.5: '0.5x',
+  0.75: '0.75x',
+  1: '1x',
+  1.25: '1.25x',
+  1.5: '1.5x',
+  1.75: '1.75x',
+  2: '2x'
+}
+
 const STORAGE_KEYS = {
   VOLUME: 'music_player_volume',
   PLAY_MODE: 'music_player_play_mode',
@@ -43,7 +54,12 @@ const STORAGE_KEYS = {
   EQ_PRESET: 'music_player_eq_preset',
   EQ_GAINS: 'music_player_eq_gains',
   SLEEP_TIMER: 'music_player_sleep_timer',
-  PLAYLIST_ORDER: 'music_player_playlist_order'
+  PLAYLIST_ORDER: 'music_player_playlist_order',
+  PLAYBACK_RATE: 'music_player_playback_rate',
+  LYRICS_SETTINGS: 'music_player_lyrics_settings',
+  LAST_PLAYBACK: 'music_player_last_playback',
+  FADE_ENABLED: 'music_player_fade_enabled',
+  FADE_DURATION: 'music_player_fade_duration'
 }
 
 function safeStorageGet(key, defaultValue) {
@@ -157,6 +173,34 @@ export function useAudioPlayer() {
   const playlistLoaded = ref(false)
   const isShuffled = ref(playMode.value === PlayMode.SHUFFLE)
 
+  const playbackRate = ref(safeStorageGet(STORAGE_KEYS.PLAYBACK_RATE, 1))
+  const playbackRateInitialized = ref(false)
+
+  const defaultLyricsSettings = {
+    fontSize: 16,
+    lineHeight: 1.8,
+    opacity: 1,
+    autoScroll: true
+  }
+  const lyricsSettings = ref(safeStorageGet(STORAGE_KEYS.LYRICS_SETTINGS, defaultLyricsSettings))
+
+  const fadeEnabled = ref(safeStorageGet(STORAGE_KEYS.FADE_ENABLED, true))
+  const fadeDuration = ref(safeStorageGet(STORAGE_KEYS.FADE_DURATION, 500))
+  const fadeGainNode = ref(null)
+  const isFading = ref(false)
+
+  const defaultLastPlayback = {
+    songId: null,
+    time: 0,
+    timestamp: null
+  }
+  const lastPlayback = ref(safeStorageGet(STORAGE_KEYS.LAST_PLAYBACK, defaultLastPlayback))
+  const resumeOnLoad = ref(true)
+
+  const coverRotation = ref(0)
+  const coverRotationSpeed = ref(360 / 10000)
+  const coverAnimationRAF = ref(null)
+
   const displayTime = computed(() => {
     if (isDragging.value) {
       return dragTime.value
@@ -229,6 +273,9 @@ export function useAudioPlayer() {
       masterGain.value = audioContext.value.createGain()
       masterGain.value.gain.value = volume.value
       
+      fadeGainNode.value = audioContext.value.createGain()
+      fadeGainNode.value.gain.value = 1
+      
       eqFilters.value = eqBandFrequencies.map((freq, index) => {
         const filter = audioContext.value.createBiquadFilter()
         filter.type = 'peaking'
@@ -237,6 +284,8 @@ export function useAudioPlayer() {
         filter.gain.value = eqBandGains.value[index]
         return filter
       })
+      
+      fadeGainNode.value.connect(masterGain.value)
       
       let prevNode = masterGain.value
       for (let i = 0; i < eqFilters.value.length; i++) {
@@ -267,8 +316,10 @@ export function useAudioPlayer() {
     try {
       sourceNode.value = audioContext.value.createMediaElementSource(audio.value)
       
-      if (eqEnabled.value) {
-        sourceNode.value.connect(masterGain.value)
+      if (eqEnabled.value && fadeGainNode.value) {
+        sourceNode.value.connect(fadeGainNode.value)
+      } else if (fadeGainNode.value) {
+        sourceNode.value.connect(fadeGainNode.value)
       } else {
         sourceNode.value.connect(audioContext.value.destination)
       }
@@ -587,6 +638,134 @@ export function useAudioPlayer() {
     playlistLoaded.value = true
   }
 
+  function setPlaybackRate(rate) {
+    const clampedRate = Math.max(0.5, Math.min(2, rate))
+    if (playbackRate.value === clampedRate) return
+    
+    playbackRate.value = clampedRate
+    safeStorageSet(STORAGE_KEYS.PLAYBACK_RATE, clampedRate)
+    
+    if (audio.value) {
+      audio.value.playbackRate = clampedRate
+    }
+    playbackRateInitialized.value = true
+  }
+
+  function setLyricsSettings(settings) {
+    lyricsSettings.value = {
+      ...lyricsSettings.value,
+      ...settings
+    }
+    safeStorageSet(STORAGE_KEYS.LYRICS_SETTINGS, lyricsSettings.value)
+  }
+
+  function toggleFade() {
+    fadeEnabled.value = !fadeEnabled.value
+    safeStorageSet(STORAGE_KEYS.FADE_ENABLED, fadeEnabled.value)
+  }
+
+  function setFadeDuration(durationMs) {
+    fadeDuration.value = Math.max(100, Math.min(2000, durationMs))
+    safeStorageSet(STORAGE_KEYS.FADE_DURATION, fadeDuration.value)
+  }
+
+  function saveLastPlayback() {
+    if (currentSong.value && currentTime.value > 0) {
+      lastPlayback.value = {
+        songId: currentSong.value.id,
+        time: currentTime.value,
+        timestamp: Date.now()
+      }
+      safeStorageSet(STORAGE_KEYS.LAST_PLAYBACK, lastPlayback.value)
+    }
+  }
+
+  function clearLastPlayback() {
+    lastPlayback.value = { ...defaultLastPlayback }
+    safeStorageRemove(STORAGE_KEYS.LAST_PLAYBACK)
+  }
+
+  function tryResumePlayback(songList) {
+    if (!lastPlayback.value || !lastPlayback.value.songId) return false
+    
+    const savedTime = lastPlayback.value.time
+    if (savedTime <= 0) return false
+    
+    const song = songList.find(s => s.id === lastPlayback.value.songId)
+    if (!song) return false
+    
+    loadSong(song, false, false)
+    
+    seekTargetTime.value = savedTime
+    
+    return true
+  }
+
+  function fadeOut(callback) {
+    if (!fadeEnabled.value || !audioContext.value || !fadeGainNode.value || isFading.value) {
+      if (callback) callback()
+      return
+    }
+    
+    isFading.value = true
+    const now = audioContext.value.currentTime
+    const duration = fadeDuration.value / 1000
+    
+    fadeGainNode.value.gain.cancelScheduledValues(now)
+    fadeGainNode.value.gain.setValueAtTime(1, now)
+    fadeGainNode.value.gain.exponentialRampToValueAtTime(0.01, now + duration)
+    
+    setTimeout(() => {
+      isFading.value = false
+      fadeGainNode.value.gain.setValueAtTime(1, audioContext.value.currentTime)
+      if (callback) callback()
+    }, fadeDuration.value)
+  }
+
+  function fadeIn() {
+    if (!fadeEnabled.value || !audioContext.value || !fadeGainNode.value) {
+      return
+    }
+    
+    const now = audioContext.value.currentTime
+    const duration = fadeDuration.value / 1000
+    
+    fadeGainNode.value.gain.cancelScheduledValues(now)
+    fadeGainNode.value.gain.setValueAtTime(0.01, now)
+    fadeGainNode.value.gain.exponentialRampToValueAtTime(1, now + duration)
+  }
+
+  function startCoverAnimation() {
+    if (coverAnimationRAF.value) {
+      cancelAnimationFrame(coverAnimationRAF.value)
+    }
+    
+    let lastTime = performance.now()
+    
+    function animate(currentTime) {
+      const deltaTime = currentTime - lastTime
+      lastTime = currentTime
+      
+      coverRotation.value += (coverRotationSpeed.value * deltaTime)
+      if (coverRotation.value >= 360) {
+        coverRotation.value = coverRotation.value % 360
+      }
+      
+      if (isPlaying.value) {
+        coverAnimationRAF.value = requestAnimationFrame(animate)
+      }
+    }
+    
+    coverAnimationRAF.value = requestAnimationFrame(animate)
+  }
+
+  function stopCoverAnimation() {
+    if (coverAnimationRAF.value) {
+      cancelAnimationFrame(coverAnimationRAF.value)
+      coverAnimationRAF.value = null
+    }
+  }
+
   function setPlayMode(mode) {
     if (Object.values(PlayMode).includes(mode)) {
       playMode.value = mode
@@ -845,6 +1024,7 @@ export function useAudioPlayer() {
     if (autoPlay) {
       audio.value.play().then(() => {
         ensureAudioContextRunning()
+        fadeIn()
       }).catch(err => {
         console.error('自动播放失败:', err)
         error.value = '自动播放被浏览器阻止，请点击播放按钮'
@@ -855,7 +1035,9 @@ export function useAudioPlayer() {
   function play() {
     if (audio.value && currentSong.value) {
       ensureAudioContextRunning()
-      audio.value.play().catch(err => {
+      audio.value.play().then(() => {
+        fadeIn()
+      }).catch(err => {
         console.error('播放失败:', err)
         error.value = '播放失败'
       })
@@ -865,6 +1047,7 @@ export function useAudioPlayer() {
   function pause() {
     if (audio.value) {
       audio.value.pause()
+      saveLastPlayback()
     }
   }
 
@@ -954,8 +1137,18 @@ export function useAudioPlayer() {
     const nextIndex = getNextIndex()
     if (nextIndex !== -1 && nextIndex < len) {
       isUserAction.value = true
-      loadSong(playlist.value[nextIndex], true, true)
-      isUserAction.value = false
+      
+      saveLastPlayback()
+      
+      if (fadeEnabled.value && isPlaying.value) {
+        fadeOut(() => {
+          loadSong(playlist.value[nextIndex], true, true)
+          isUserAction.value = false
+        })
+      } else {
+        loadSong(playlist.value[nextIndex], true, true)
+        isUserAction.value = false
+      }
     }
   }
 
@@ -972,14 +1165,23 @@ export function useAudioPlayer() {
     if (prevIndex !== -1 && prevIndex < len) {
       isUserAction.value = true
       
-      if (historyStack.value.length > 0 && playMode.value === PlayMode.SHUFFLE) {
-        const lastHistory = historyStack.value.pop()
-        loadSong(lastHistory.song, true, false)
-      } else {
-        loadSong(playlist.value[prevIndex], true, false)
+      saveLastPlayback()
+      
+      const performLoad = () => {
+        if (historyStack.value.length > 0 && playMode.value === PlayMode.SHUFFLE) {
+          const lastHistory = historyStack.value.pop()
+          loadSong(lastHistory.song, true, false)
+        } else {
+          loadSong(playlist.value[prevIndex], true, false)
+        }
+        isUserAction.value = false
       }
       
-      isUserAction.value = false
+      if (fadeEnabled.value && isPlaying.value) {
+        fadeOut(performLoad)
+      } else {
+        performLoad()
+      }
     }
   }
 
@@ -1123,6 +1325,13 @@ export function useAudioPlayer() {
     }
   }
 
+  function applyPlaybackRate() {
+    if (audio.value && !playbackRateInitialized.value) {
+      audio.value.playbackRate = playbackRate.value
+      playbackRateInitialized.value = true
+    }
+  }
+
   watch(volume, (newVolume) => {
     if (audio.value) {
       audio.value.volume = newVolume
@@ -1138,6 +1347,12 @@ export function useAudioPlayer() {
     }
   })
 
+  watch(playbackRate, (newRate) => {
+    if (audio.value) {
+      audio.value.playbackRate = newRate
+    }
+  })
+
   watch(isPlaying, (nowPlaying) => {
     if (sleepTimerEnabled.value) {
       if (nowPlaying) {
@@ -1146,6 +1361,13 @@ export function useAudioPlayer() {
         stopSleepTimer()
       }
     }
+    
+    if (nowPlaying) {
+      startCoverAnimation()
+      applyPlaybackRate()
+    } else {
+      stopCoverAnimation()
+    }
   })
 
   onMounted(() => {
@@ -1153,11 +1375,17 @@ export function useAudioPlayer() {
       initAudio()
     }
     loadSleepTimerConfig()
+    
+    if (audio.value) {
+      audio.value.playbackRate = playbackRate.value
+    }
   })
 
   onUnmounted(() => {
     cleanupAudio()
     stopSleepTimer()
+    stopCoverAnimation()
+    saveLastPlayback()
     
     if (audioContext.value) {
       audioContext.value.close().catch(err => {
@@ -1204,6 +1432,16 @@ export function useAudioPlayer() {
     eqPresetValues,
     isShuffled,
     playlistLoaded,
+    playbackRate,
+    playbackRates,
+    playbackRateLabels,
+    lyricsSettings,
+    defaultLyricsSettings,
+    fadeEnabled,
+    fadeDuration,
+    isFading,
+    lastPlayback,
+    coverRotation,
     setPlaylist,
     setPlayMode,
     togglePlayMode,
@@ -1235,6 +1473,17 @@ export function useAudioPlayer() {
     restorePlaylistOrder,
     toggleShuffle,
     savePlaylistOrder,
+    setPlaybackRate,
+    setLyricsSettings,
+    toggleFade,
+    setFadeDuration,
+    fadeIn,
+    fadeOut,
+    saveLastPlayback,
+    clearLastPlayback,
+    tryResumePlayback,
+    startCoverAnimation,
+    stopCoverAnimation,
     formatTime
   }
 }
