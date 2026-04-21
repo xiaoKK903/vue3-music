@@ -231,7 +231,7 @@ function handleLyricClick(index) {
 }
 
 watch(displayTime, (newTime) => {
-  if (lyricsList.value.length > 0 && !isDraggingProgress.value) {
+  if (lyricsList.value.length > 0) {
     const prevIndex = currentLyricIndex.value
     findCurrentLyricIndex(newTime)
     
@@ -241,7 +241,7 @@ watch(displayTime, (newTime) => {
       })
     }
   }
-})
+}, { immediate: true })
 
 watch(currentSong, (newSong) => {
   if (newSong && newSong.lyrics) {
