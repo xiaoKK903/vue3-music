@@ -865,6 +865,22 @@ export function useAudioPlayer() {
       audio.value.pause()
       audio.value = null
     }
+    sourceNode.value = null
+  }
+
+  function ensureAudioContextInitialized() {
+    if (isAudioContextInitialized.value) return true
+    
+    try {
+      initAudioContext()
+      if (isAudioContextInitialized.value && audio.value) {
+        connectAudioToEQ()
+        return true
+      }
+    } catch (err) {
+      console.warn('Web Audio API 初始化失败，使用纯 HTML5 播放:', err)
+    }
+    return false
   }
 
   function handleTimeUpdate(e) {
@@ -1017,7 +1033,12 @@ export function useAudioPlayer() {
     }
     
     if (autoPlay) {
-      audio.value.play().catch(err => {
+      const webAudioReady = ensureAudioContextInitialized()
+      audio.value.play().then(() => {
+        if (webAudioReady && fadeEnabled.value) {
+          fadeIn()
+        }
+      }).catch(err => {
         console.error('自动播放失败:', err)
         error.value = '自动播放被浏览器阻止，请点击播放按钮'
       })
@@ -1026,7 +1047,14 @@ export function useAudioPlayer() {
 
   function play() {
     if (audio.value && currentSong.value) {
-      audio.value.play().catch(err => {
+      const webAudioReady = ensureAudioContextInitialized()
+      ensureAudioContextRunning()
+      
+      audio.value.play().then(() => {
+        if (webAudioReady && fadeEnabled.value) {
+          fadeIn()
+        }
+      }).catch(err => {
         console.error('播放失败:', err)
         error.value = '播放失败'
       })
