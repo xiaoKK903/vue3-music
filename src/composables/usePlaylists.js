@@ -57,12 +57,61 @@ export function usePlaylists() {
       const stored = getItem(STORAGE_KEYS.PLAYLISTS, null)
       const storedCurrentId = getItem(STORAGE_KEYS.CURRENT_PLAYLIST, 'default')
       
+      let initializedPlaylists = []
+      
       if (stored && Array.isArray(stored) && stored.length > 0) {
-        playlists.value = stored
+        initializedPlaylists = deepClone(stored)
+        
+        const defaultPlaylist = initializedPlaylists.find(p => p.id === 'default')
+        if (!defaultPlaylist) {
+          const newDefaultPlaylist = {
+            id: 'default',
+            name: '默认歌单',
+            icon: '📁',
+            cover: null,
+            songIds: [...allSongIds],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            description: '系统默认歌单'
+          }
+          initializedPlaylists.unshift(newDefaultPlaylist)
+        } else {
+          const existingSongIds = defaultPlaylist.songIds || []
+          const missingSongIds = allSongIds.filter(id => !existingSongIds.includes(id))
+          
+          if (missingSongIds.length > 0) {
+            defaultPlaylist.songIds = [...existingSongIds, ...missingSongIds]
+            defaultPlaylist.updatedAt = Date.now()
+          }
+        }
+        
+        const favoritesPlaylist = initializedPlaylists.find(p => p.id === 'favorites')
+        if (!favoritesPlaylist) {
+          const newFavoritesPlaylist = {
+            id: 'favorites',
+            name: '我喜欢',
+            icon: '❤️',
+            cover: null,
+            songIds: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            description: '收藏的歌曲'
+          }
+          const defaultIndex = initializedPlaylists.findIndex(p => p.id === 'default')
+          if (defaultIndex !== -1) {
+            initializedPlaylists.splice(defaultIndex + 1, 0, newFavoritesPlaylist)
+          } else {
+            initializedPlaylists.unshift(newFavoritesPlaylist)
+          }
+        }
+        
+        savePlaylists()
       } else {
-        playlists.value = deepClone(defaultPlaylists)
+        initializedPlaylists = deepClone(defaultPlaylists)
         savePlaylists()
       }
+      
+      playlists.value = initializedPlaylists
       
       const exists = playlists.value.find(p => p.id === storedCurrentId)
       if (exists) {
