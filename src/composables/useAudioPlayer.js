@@ -1,4 +1,7 @@
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
+import { usePlayStatistics } from './usePlayStatistics'
+import { useSpatialAudio } from './useSpatialAudio'
+import { useStorage } from './useStorage'
 
 export const PlayMode = {
   LIST_LOOP: 'listLoop',
@@ -138,6 +141,47 @@ export function resetAllToDefault() {
 }
 
 export function useAudioPlayer() {
+  const { STORAGE_KEYS: storageKeys, clearAll, getStorageInfo } = useStorage()
+  const {
+    statistics,
+    initStatistics,
+    recordSongPlay,
+    recordPlayTime,
+    resetStatistics,
+    totalListenTimeFormatted,
+    todayPlayCount,
+    top10Songs,
+    activeDays,
+    getWeeklyStats,
+    getSongPlayCount,
+    getSongPlayTime
+  } = usePlayStatistics()
+  
+  const {
+    config: spatialConfig,
+    initSpatialConfig,
+    saveSpatialConfig,
+    toggleSpatialEnabled,
+    toggleReverbEnabled,
+    setSpatialPreset,
+    setReverbPreset,
+    setReverbWet,
+    setReverbDry,
+    setSpatialWidth,
+    setSpatialDepth,
+    setPanning,
+    togglePanningEnabled,
+    resetSpatialConfig,
+    currentSpatialPresetName,
+    currentReverbPresetName,
+    SpatialPresets,
+    ReverbPresets,
+    availableSpatialPresets,
+    availableReverbPresets,
+    initSpatialNodes,
+    connectSpatialChain
+  } = useSpatialAudio()
+
   const audio = ref(null)
   const isPlaying = ref(false)
   
@@ -162,6 +206,13 @@ export function useAudioPlayer() {
   const shuffleHistory = ref([])
   const shuffleIndex = ref(-1)
   const isUserAction = ref(false)
+  
+  const playTimeStart = ref(0)
+  const lastRecordedTime = ref(0)
+  const playbackThreshold = ref(30)
+  
+  const spatialNodes = ref(null)
+  const isSpatialInitialized = ref(false)
 
   const sleepTimerEnabled = ref(false)
   const sleepTimerDuration = ref(0)
@@ -907,7 +958,19 @@ export function useAudioPlayer() {
   function handleEnded() {
     isPlaying.value = false
     
+    if (currentSong.value) {
+      const playDuration = (currentTime.value - playTimeStart.value) * 1000
+      if (playDuration > playbackThreshold.value * 1000 || currentTime.value >= duration.value * 0.8) {
+        recordSongPlay(currentSong.value.id, playDuration > 0 ? playDuration : duration.value * 1000)
+      } else if (playDuration > 0) {
+        recordPlayTime(playDuration)
+      }
+    }
+    
     if (playMode.value === PlayMode.SINGLE_LOOP) {
+      if (currentSong.value) {
+        recordSongPlay(currentSong.value.id, duration.value * 1000)
+      }
       if (audio.value) {
         audio.value.currentTime = 0
         currentTime.value = 0
@@ -931,10 +994,17 @@ export function useAudioPlayer() {
 
   function handlePlay() {
     isPlaying.value = true
+    playTimeStart.value = currentTime.value
   }
 
   function handlePause() {
     isPlaying.value = false
+    if (currentSong.value) {
+      const playDuration = (currentTime.value - playTimeStart.value) * 1000
+      if (playDuration > 0) {
+        recordPlayTime(playDuration)
+      }
+    }
   }
 
   function handleWaiting() {
@@ -985,10 +1055,21 @@ export function useAudioPlayer() {
       initAudio()
     }
     
+    if (currentSong.value && currentSong.value.id !== song.id) {
+      const playDuration = (currentTime.value - playTimeStart.value) * 1000
+      if (playDuration > playbackThreshold.value * 1000 || 
+          (duration.value > 0 && currentTime.value >= duration.value * 0.8)) {
+        recordSongPlay(currentSong.value.id, playDuration > 0 ? playDuration : (duration.value > 0 ? duration.value * 1000 : 30000))
+      } else if (playDuration > 0) {
+        recordPlayTime(playDuration)
+      }
+    }
+    
     currentTime.value = 0
     seekTargetTime.value = null
     isDragging.value = false
     dragTime.value = 0
+    playTimeStart.value = 0
     
     if (recordHistory && currentSong.value && currentSong.value.id !== song.id) {
       if (historyStack.value.length === 0 || 
@@ -1392,6 +1473,8 @@ export function useAudioPlayer() {
       initAudio()
     }
     loadSleepTimerConfig()
+    initStatistics()
+    initSpatialConfig()
     
     if (audio.value) {
       audio.value.playbackRate = playbackRate.value
@@ -1399,6 +1482,13 @@ export function useAudioPlayer() {
   })
 
   onUnmounted(() => {
+    if (currentSong.value && isPlaying.value) {
+      const playDuration = (currentTime.value - playTimeStart.value) * 1000
+      if (playDuration > 0) {
+        recordPlayTime(playDuration)
+      }
+    }
+    
     cleanupAudio()
     stopSleepTimer()
     stopCoverAnimation()
@@ -1459,6 +1549,39 @@ export function useAudioPlayer() {
     isFading,
     lastPlayback,
     coverRotation,
+    
+    statistics,
+    totalListenTimeFormatted,
+    todayPlayCount,
+    top10Songs,
+    activeDays,
+    resetStatistics,
+    getWeeklyStats,
+    getSongPlayCount,
+    getSongPlayTime,
+    
+    spatialConfig,
+    currentSpatialPresetName,
+    currentReverbPresetName,
+    SpatialPresets,
+    ReverbPresets,
+    availableSpatialPresets,
+    availableReverbPresets,
+    toggleSpatialEnabled,
+    toggleReverbEnabled,
+    setSpatialPreset,
+    setReverbPreset,
+    setReverbWet,
+    setReverbDry,
+    setSpatialWidth,
+    setSpatialDepth,
+    setPanning,
+    togglePanningEnabled,
+    resetSpatialConfig,
+    
+    clearAll,
+    getStorageInfo,
+    
     setPlaylist,
     setPlayMode,
     togglePlayMode,

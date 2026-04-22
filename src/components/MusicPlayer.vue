@@ -14,7 +14,9 @@ import {
 } from '../composables/useAudioPlayer.js'
 import { useLyrics } from '../composables/useLyrics.js'
 import { useTheme, THEME_MODES } from '../composables/useTheme.js'
-import { localSongs } from '../data/songs.js'
+import { usePlaylists } from '../composables/usePlaylists.js'
+import { localSongs, getSongById } from '../data/songs.js'
+import FullscreenLyrics from './FullscreenLyrics.vue'
 
 const {
   isPlaying,
@@ -53,6 +55,38 @@ const {
   fadeDuration,
   coverRotation,
   lastPlayback,
+  
+  statistics,
+  totalListenTimeFormatted,
+  todayPlayCount,
+  top10Songs,
+  activeDays,
+  resetStatistics,
+  getWeeklyStats,
+  getSongPlayCount,
+  getSongPlayTime,
+  
+  spatialConfig,
+  currentSpatialPresetName,
+  currentReverbPresetName,
+  SpatialPresets,
+  ReverbPresets,
+  availableSpatialPresets,
+  availableReverbPresets,
+  toggleSpatialEnabled,
+  toggleReverbEnabled,
+  setSpatialPreset,
+  setReverbPreset,
+  setReverbWet,
+  setReverbDry,
+  setSpatialWidth,
+  setSpatialDepth,
+  setPanning,
+  togglePanningEnabled,
+  resetSpatialConfig,
+  
+  clearAll,
+  
   setPlaylist,
   loadSong,
   togglePlay,
@@ -97,6 +131,196 @@ const {
   toggleLyricsPanel,
   clearLyrics
 } = useLyrics()
+
+const {
+  playlists,
+  currentPlaylistId,
+  currentPlaylist,
+  favoritesPlaylist,
+  playlistCount,
+  initPlaylists,
+  createPlaylist,
+  deletePlaylist,
+  updatePlaylist,
+  selectPlaylist,
+  addSongToPlaylist,
+  removeSongFromPlaylist,
+  moveSongInPlaylist,
+  isSongInPlaylist,
+  isSongInFavorites,
+  toggleFavorite,
+  getPlaylistById,
+  clearPlaylistSongs,
+  resetAllPlaylists
+} = usePlaylists()
+
+const showPlaylistManager = ref(false)
+const showNewPlaylistDialog = ref(false)
+const showAddToPlaylistDialog = ref(false)
+const selectedSongForPlaylist = ref(null)
+const newPlaylistName = ref('')
+const creatingPlaylist = ref(false)
+
+const showStatisticsPanel = ref(false)
+const showSpatialPanel = ref(false)
+const showSettingsPanel = ref(false)
+const showErrorToast = ref(false)
+const errorToastMessage = ref('')
+
+const weeklyStats = computed(() => {
+  return getWeeklyStats()
+})
+
+const topSongsWithDetails = computed(() => {
+  return top10Songs.value.map(item => {
+    const song = getSongById(item.id)
+    return {
+      ...item,
+      song
+    }
+  }).filter(item => item.song !== undefined)
+})
+
+function toggleStatisticsPanel() {
+  showStatisticsPanel.value = !showStatisticsPanel.value
+  if (showStatisticsPanel.value) {
+    showSpatialPanel.value = false
+    showSettingsPanel.value = false
+  }
+}
+
+function toggleSpatialPanel() {
+  showSpatialPanel.value = !showSpatialPanel.value
+  if (showSpatialPanel.value) {
+    showStatisticsPanel.value = false
+    showSettingsPanel.value = false
+  }
+}
+
+function toggleSettingsPanel() {
+  showSettingsPanel.value = !showSettingsPanel.value
+  if (showSettingsPanel.value) {
+    showStatisticsPanel.value = false
+    showSpatialPanel.value = false
+  }
+}
+
+function handleClearAllData() {
+  if (confirm('确定要清除所有数据吗？此操作将清除所有播放记录、歌单数据和设置。')) {
+    clearAll()
+    resetAllPlaylists()
+    resetStatistics()
+    resetSpatialConfig()
+    resetAllToDefault()
+    window.location.reload()
+  }
+}
+
+function handleClearCache() {
+  if (confirm('确定要清除播放统计数据吗？')) {
+    resetStatistics()
+    showToast('播放统计已清除')
+  }
+}
+
+function showToast(message) {
+  errorToastMessage.value = message
+  showErrorToast.value = true
+  setTimeout(() => {
+    showErrorToast.value = false
+  }, 3000)
+}
+
+function handleResetSpatial() {
+  resetSpatialConfig()
+  showToast('空间音效已重置为默认')
+}
+
+function handleResetPlaylists() {
+  if (confirm('确定要重置所有歌单吗？')) {
+    resetAllPlaylists()
+    showToast('歌单已重置')
+  }
+}
+
+const currentPlaylistSongs = computed(() => {
+  if (!currentPlaylist.value || !currentPlaylist.value.songIds) return []
+  return currentPlaylist.value.songIds
+    .map(id => getSongById(id))
+    .filter(song => song !== undefined)
+})
+
+function togglePlaylistManager() {
+  showPlaylistManager.value = !showPlaylistManager.value
+}
+
+function handleCreatePlaylist() {
+  if (!newPlaylistName.value.trim()) return
+  
+  creatingPlaylist.value = true
+  const playlist = createPlaylist(newPlaylistName.value.trim())
+  
+  if (playlist) {
+    if (selectedSongForPlaylist.value) {
+      addSongToPlaylist(playlist.id, selectedSongForPlaylist.value.id)
+      selectedSongForPlaylist.value = null
+    }
+    newPlaylistName.value = ''
+    showNewPlaylistDialog.value = false
+  }
+  
+  creatingPlaylist.value = false
+}
+
+function handleDeletePlaylist(playlistId) {
+  if (confirm('确定要删除这个歌单吗？此操作不可撤销。')) {
+    deletePlaylist(playlistId)
+  }
+}
+
+function handleSelectPlaylist(playlistId) {
+  selectPlaylist(playlistId)
+  const songs = currentPlaylistSongs.value
+  if (songs.length > 0) {
+    setPlaylist(songs, false)
+  }
+  showPlaylistManager.value = false
+}
+
+function handlePlayPlaylist(playlistId) {
+  const playlist = getPlaylistById(playlistId)
+  if (!playlist || !playlist.songIds || playlist.songIds.length === 0) return
+  
+  const songs = playlist.songIds
+    .map(id => getSongById(id))
+    .filter(song => song !== undefined)
+  
+  if (songs.length > 0) {
+    setPlaylist(songs, true)
+  }
+  showPlaylistManager.value = false
+}
+
+function openAddToPlaylistDialog(song) {
+  selectedSongForPlaylist.value = song
+  showAddToPlaylistDialog.value = true
+}
+
+function handleAddSongToPlaylist(playlistId) {
+  if (!selectedSongForPlaylist.value) return
+  
+  addSongToPlaylist(playlistId, selectedSongForPlaylist.value.id)
+  showAddToPlaylistDialog.value = false
+  selectedSongForPlaylist.value = null
+}
+
+function handleRemoveSongFromPlaylist(playlistId, songId) {
+  removeSongFromPlaylist(playlistId, songId)
+}
+
+function handleToggleFavorite(song) {
+  toggleFavorite(song.id)
+}
 
 const progressBarRef = ref(null)
 const lyricsContainerRef = ref(null)
@@ -339,6 +563,18 @@ const coverRotationStyle = computed(() => {
   }
 })
 
+const showFullscreenLyrics = ref(false)
+
+function toggleFullscreenLyrics() {
+  showFullscreenLyrics.value = !showFullscreenLyrics.value
+}
+
+function handleFullscreenSeek(time) {
+  if (time >= 0) {
+    seekToTime(time)
+  }
+}
+
 function saveLyricsConfig() {
   try {
     localStorage.setItem('music_player_lyrics_show', JSON.stringify(showLyricsPanel.value))
@@ -534,6 +770,7 @@ watch(currentSong, (newSong) => {
 
 onMounted(() => {
   initTheme()
+  initPlaylists()
   loadLyricsConfig()
   setPlaylist(songs.value, false)
   
@@ -873,6 +1110,55 @@ onUnmounted(() => {
             </svg>
           </button>
 
+          <button class="control-btn fullscreen-lyrics-btn"
+                  @click="toggleFullscreenLyrics"
+                  :class="{ 'active': showFullscreenLyrics }"
+                  title="全屏歌词">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+            </svg>
+          </button>
+
+          <button class="control-btn playlist-manager-btn"
+                  @click="togglePlaylistManager"
+                  :class="{ 'active': showPlaylistManager }"
+                  :title="`歌单管理 - ${currentPlaylist?.name || '默认歌单'}`">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <path d="M16 11H6M16 15H6M10 7H6"/>
+            </svg>
+          </button>
+
+          <button class="control-btn statistics-btn"
+                  @click="toggleStatisticsPanel"
+                  :class="{ 'active': showStatisticsPanel }"
+                  :title="`播放统计 - 累计 ${totalListenTimeFormatted}`">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </button>
+
+          <button class="control-btn spatial-btn"
+                  @click="toggleSpatialPanel"
+                  :class="{ 'active': spatialConfig.enabled }"
+                  :title="`空间音效: ${currentSpatialPresetName}`">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12h.01M7 12h.01M11 12h.01M15 12h.01M19 12h.01"/>
+              <path d="M12 3v18"/>
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+          </button>
+
+          <button class="control-btn settings-btn"
+                  @click="toggleSettingsPanel"
+                  :class="{ 'active': showSettingsPanel }"
+                  title="设置">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+          </button>
+
           <button class="control-btn play-mode-btn" 
                   @click="togglePlayMode"
                   :class="playModeColor"
@@ -1003,6 +1289,521 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <Transition name="playlist-manager">
+      <div v-if="showPlaylistManager" class="playlist-manager-overlay" @click.self="togglePlaylistManager">
+        <div class="playlist-manager-panel">
+          <div class="panel-header">
+            <h4 class="panel-title">歌单管理</h4>
+            <button class="close-panel-btn" @click="togglePlaylistManager">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="panel-content">
+            <div class="playlists-section">
+              <div class="section-header">
+                <span class="section-label">我的歌单</span>
+                <button class="create-playlist-btn" @click="showNewPlaylistDialog = true">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                  </svg>
+                  <span>新建歌单</span>
+                </button>
+              </div>
+
+              <div class="playlists-list">
+                <div v-for="playlist in playlists" :key="playlist.id"
+                     class="playlist-item"
+                     :class="{
+                       'active': currentPlaylistId === playlist.id,
+                       'has-songs': playlist.songIds && playlist.songIds.length > 0
+                     }">
+                  <div class="playlist-icon">{{ playlist.icon }}</div>
+                  <div class="playlist-info" @click="handleSelectPlaylist(playlist.id)">
+                    <div class="playlist-name">{{ playlist.name }}</div>
+                    <div class="playlist-count">{{ playlist.songIds?.length || 0 }} 首歌曲</div>
+                  </div>
+                  <div class="playlist-actions">
+                    <button class="action-btn mini play-playlist-btn" 
+                            @click.stop="handlePlayPlaylist(playlist.id)"
+                            :disabled="!playlist.songIds || playlist.songIds.length === 0"
+                            title="播放歌单">
+                      <svg viewBox="0 0 24 24" width="14" height="14">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    </button>
+                    <button v-if="playlist.id !== 'default' && playlist.id !== 'favorites'" 
+                            class="action-btn mini danger" 
+                            @click.stop="handleDeletePlaylist(playlist.id)"
+                            title="删除歌单">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="current-playlist-songs" v-if="currentPlaylist">
+              <div class="section-header">
+                <span class="section-label">{{ currentPlaylist.name }} - 歌曲列表</span>
+              </div>
+
+              <div class="songs-list" v-if="currentPlaylistSongs.length > 0">
+                <div v-for="(song, index) in currentPlaylistSongs" :key="song.id"
+                     class="playlist-song-item"
+                     :class="{ 'playing': currentSong?.id === song.id }">
+                  <div class="song-number">{{ index + 1 }}</div>
+                  <img :src="song.cover" :alt="song.title" class="song-cover-small" />
+                  <div class="song-info-small" @click="selectSong(song)">
+                    <div class="song-title-small">{{ song.title }}</div>
+                    <div class="song-artist-small">{{ song.artist }}</div>
+                  </div>
+                  <div class="song-actions">
+                    <button class="action-btn mini favorite-btn"
+                            :class="{ 'active': isSongInFavorites(song.id) }"
+                            @click.stop="handleToggleFavorite(song)"
+                            :title="isSongInFavorites(song.id) ? '取消喜欢' : '添加到喜欢'">
+                      <svg v-if="isSongInFavorites(song.id)" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                      <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                    </button>
+                    <button v-if="currentPlaylistId !== 'default'" 
+                            class="action-btn mini danger"
+                            @click.stop="handleRemoveSongFromPlaylist(currentPlaylistId, song.id)"
+                            title="从歌单移除">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else class="empty-playlist-songs">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
+                  <path d="M9 18V5l12-2v13"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <circle cx="18" cy="16" r="3"/>
+                </svg>
+                <p>歌单为空</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="dialog">
+      <div v-if="showNewPlaylistDialog" class="dialog-overlay" @click.self="showNewPlaylistDialog = false">
+        <div class="dialog-panel">
+          <div class="dialog-header">
+            <h4 class="dialog-title">新建歌单</h4>
+          </div>
+          <div class="dialog-content">
+            <input type="text" 
+                   class="playlist-name-input"
+                   v-model="newPlaylistName"
+                   placeholder="请输入歌单名称"
+                   @keyup.enter="handleCreatePlaylist"
+                   autofocus />
+          </div>
+          <div class="dialog-footer">
+            <button class="dialog-btn cancel" @click="showNewPlaylistDialog = false">取消</button>
+            <button class="dialog-btn primary" 
+                    @click="handleCreatePlaylist"
+                    :disabled="!newPlaylistName.trim() || creatingPlaylist">
+              {{ creatingPlaylist ? '创建中...' : '创建' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="dialog">
+      <div v-if="showAddToPlaylistDialog" class="dialog-overlay" @click.self="showAddToPlaylistDialog = false">
+        <div class="dialog-panel">
+          <div class="dialog-header">
+            <h4 class="dialog-title">添加到歌单</h4>
+          </div>
+          <div class="dialog-content">
+            <div v-if="selectedSongForPlaylist" class="selected-song-preview">
+              <img :src="selectedSongForPlaylist.cover" :alt="selectedSongForPlaylist.title" class="preview-cover" />
+              <div class="preview-info">
+                <div class="preview-title">{{ selectedSongForPlaylist.title }}</div>
+                <div class="preview-artist">{{ selectedSongForPlaylist.artist }}</div>
+              </div>
+            </div>
+            
+            <div class="playlist-options">
+              <div v-for="playlist in playlists" :key="playlist.id"
+                   class="playlist-option"
+                   :class="{ 
+                     'active': isSongInPlaylist(playlist.id, selectedSongForPlaylist?.id),
+                     'disabled': isSongInPlaylist(playlist.id, selectedSongForPlaylist?.id)
+                   }"
+                   @click="!isSongInPlaylist(playlist.id, selectedSongForPlaylist?.id) && handleAddSongToPlaylist(playlist.id)">
+                <span class="playlist-option-icon">{{ playlist.icon }}</span>
+                <span class="playlist-option-name">{{ playlist.name }}</span>
+                <span v-if="isSongInPlaylist(playlist.id, selectedSongForPlaylist?.id)" class="playlist-option-status">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                  </svg>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <button class="dialog-btn cancel" @click="showAddToPlaylistDialog = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="panel">
+      <div v-if="showStatisticsPanel" class="panel-overlay" @click.self="toggleStatisticsPanel">
+        <div class="side-panel statistics-panel">
+          <div class="panel-header">
+            <h4 class="panel-title">播放统计</h4>
+            <button class="close-panel-btn" @click="toggleStatisticsPanel">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="panel-content statistics-content">
+            <div class="stats-overview">
+              <div class="stat-card">
+                <div class="stat-value">{{ statistics?.totalPlayCount || 0 }}</div>
+                <div class="stat-label">累计播放</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ totalListenTimeFormatted }}</div>
+                <div class="stat-label">累计时长</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ activeDays || 0 }}</div>
+                <div class="stat-label">活跃天数</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">{{ todayPlayCount || 0 }}</div>
+                <div class="stat-label">今日播放</div>
+              </div>
+            </div>
+
+            <div class="stats-section">
+              <div class="section-header">
+                <span class="section-label">本周听歌趋势</span>
+              </div>
+              <div class="weekly-chart">
+                <div v-for="(day, index) in weeklyStats" :key="index" class="chart-bar-container">
+                  <div class="chart-bar" :style="{ height: (day.percentage || 0) + '%' }"></div>
+                  <div class="chart-label">{{ day.label }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stats-section">
+              <div class="section-header">
+                <span class="section-label">最常听歌曲 TOP 10</span>
+              </div>
+              <div class="top-songs-list" v-if="topSongsWithDetails.length > 0">
+                <div v-for="(item, index) in topSongsWithDetails.slice(0, 10)" :key="item.id"
+                     class="top-song-item">
+                  <div class="song-rank">{{ index + 1 }}</div>
+                  <img :src="item.song.cover" :alt="item.song.title" class="song-cover-tiny" />
+                  <div class="song-info-tiny">
+                    <div class="song-title-tiny">{{ item.song.title }}</div>
+                    <div class="song-artist-tiny">{{ item.song.artist }}</div>
+                  </div>
+                  <div class="song-stats">
+                    <span class="play-count">{{ item.playCount }}次</span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-stats">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" opacity="0.3">
+                  <path d="M9 18V5l12-2v13"/>
+                  <circle cx="6" cy="18" r="3"/>
+                  <circle cx="18" cy="16" r="3"/>
+                </svg>
+                <p>暂无统计数据</p>
+              </div>
+            </div>
+
+            <div class="stats-actions">
+              <button class="action-btn" @click="handleClearCache">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+                <span>清除统计</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="panel">
+      <div v-if="showSpatialPanel" class="panel-overlay" @click.self="toggleSpatialPanel">
+        <div class="side-panel spatial-panel">
+          <div class="panel-header">
+            <h4 class="panel-title">空间音效</h4>
+            <button class="close-panel-btn" @click="toggleSpatialPanel">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="panel-content spatial-content">
+            <div class="spatial-toggle">
+              <div class="toggle-row">
+                <span class="toggle-label">启用空间音效</span>
+                <button class="toggle-switch" 
+                        :class="{ 'on': spatialConfig?.enabled }"
+                        @click="toggleSpatialEnabled">
+                  <div class="toggle-thumb"></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="spatial-section">
+              <div class="section-header">
+                <span class="section-label">声场预设</span>
+              </div>
+              <div class="preset-grid">
+                <button v-for="preset in availableSpatialPresets" :key="preset.value"
+                        class="preset-btn"
+                        :class="{ 'active': spatialConfig?.preset === preset.value }"
+                        @click="setSpatialPreset(preset.value)">
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="spatial-section" v-if="spatialConfig?.enabled">
+              <div class="section-header">
+                <span class="section-label">声场宽度</span>
+                <span class="section-value">{{ Math.round((spatialConfig?.width || 0) * 100) }}%</span>
+              </div>
+              <input type="range" class="spatial-slider" 
+                     min="0" max="1" step="0.01"
+                     :value="spatialConfig?.width || 0"
+                     @input="setSpatialWidth(parseFloat($event.target.value))" />
+            </div>
+
+            <div class="spatial-section" v-if="spatialConfig?.enabled">
+              <div class="section-header">
+                <span class="section-label">空间深度</span>
+                <span class="section-value">{{ Math.round((spatialConfig?.depth || 0) * 100) }}%</span>
+              </div>
+              <input type="range" class="spatial-slider" 
+                     min="0" max="1" step="0.01"
+                     :value="spatialConfig?.depth || 0"
+                     @input="setSpatialDepth(parseFloat($event.target.value))" />
+            </div>
+
+            <div class="spatial-toggle">
+              <div class="toggle-row">
+                <span class="toggle-label">启用混响</span>
+                <button class="toggle-switch" 
+                        :class="{ 'on': spatialConfig?.reverb?.enabled }"
+                        @click="toggleReverbEnabled">
+                  <div class="toggle-thumb"></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="spatial-section" v-if="spatialConfig?.reverb?.enabled">
+              <div class="section-header">
+                <span class="section-label">混响预设</span>
+              </div>
+              <div class="preset-grid">
+                <button v-for="preset in availableReverbPresets" :key="preset.value"
+                        class="preset-btn"
+                        :class="{ 'active': spatialConfig?.reverb?.preset === preset.value }"
+                        @click="setReverbPreset(preset.value)">
+                  {{ preset.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="spatial-section" v-if="spatialConfig?.reverb?.enabled">
+              <div class="section-header">
+                <span class="section-label">混响强度</span>
+                <span class="section-value">{{ Math.round((spatialConfig?.reverb?.wet || 0) * 100) }}%</span>
+              </div>
+              <input type="range" class="spatial-slider" 
+                     min="0" max="1" step="0.01"
+                     :value="spatialConfig?.reverb?.wet || 0"
+                     @input="setReverbWet(parseFloat($event.target.value))" />
+            </div>
+
+            <div class="spatial-toggle">
+              <div class="toggle-row">
+                <span class="toggle-label">启用声像控制</span>
+                <button class="toggle-switch" 
+                        :class="{ 'on': spatialConfig?.panning?.enabled }"
+                        @click="togglePanningEnabled">
+                  <div class="toggle-thumb"></div>
+                </button>
+              </div>
+            </div>
+
+            <div class="spatial-section" v-if="spatialConfig?.panning?.enabled">
+              <div class="section-header">
+                <span class="section-label">声像位置</span>
+                <span class="section-value">
+                  {{ (spatialConfig?.panning?.pan || 0) > 0 ? '右 ' + Math.round((spatialConfig?.panning?.pan || 0) * 100) + '%' : 
+                     (spatialConfig?.panning?.pan || 0) < 0 ? '左 ' + Math.round(Math.abs(spatialConfig?.panning?.pan || 0) * 100) + '%' : '居中' }}
+                </span>
+              </div>
+              <input type="range" class="spatial-slider" 
+                     min="-1" max="1" step="0.01"
+                     :value="spatialConfig?.panning?.pan || 0"
+                     @input="setPanning(parseFloat($event.target.value))" />
+            </div>
+
+            <div class="spatial-actions">
+              <button class="action-btn" @click="handleResetSpatial">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                <span>重置</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="panel">
+      <div v-if="showSettingsPanel" class="panel-overlay" @click.self="toggleSettingsPanel">
+        <div class="side-panel settings-panel">
+          <div class="panel-header">
+            <h4 class="panel-title">设置</h4>
+            <button class="close-panel-btn" @click="toggleSettingsPanel">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="panel-content settings-content">
+            <div class="settings-section">
+              <div class="section-header">
+                <span class="section-label">主题设置</span>
+              </div>
+              <div class="theme-options">
+                <button class="theme-option" 
+                        :class="{ 'active': !isDark }"
+                        @click="setTheme(THEME_MODES.LIGHT)">
+                  <div class="theme-preview light"></div>
+                  <span>浅色</span>
+                </button>
+                <button class="theme-option" 
+                        :class="{ 'active': isDark }"
+                        @click="setTheme(THEME_MODES.DARK)">
+                  <div class="theme-preview dark"></div>
+                  <span>深色</span>
+                </button>
+                <button class="theme-option" 
+                        :class="{ 'active': currentMode === THEME_MODES.SYSTEM }"
+                        @click="setTheme(THEME_MODES.SYSTEM)">
+                  <div class="theme-preview auto"></div>
+                  <span>跟随系统</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="section-header">
+                <span class="section-label">数据管理</span>
+              </div>
+              <div class="settings-actions">
+                <button class="action-btn danger" @click="handleClearCache">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                  <span>清除播放统计</span>
+                </button>
+                <button class="action-btn danger" @click="handleResetPlaylists">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                  <span>重置歌单</span>
+                </button>
+                <button class="action-btn danger" @click="handleResetSpatial">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                  </svg>
+                  <span>重置音效</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="section-header">
+                <span class="section-label">危险操作</span>
+              </div>
+              <div class="settings-actions">
+                <button class="action-btn danger-full" @click="handleResetAll">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>重置所有设置为默认</span>
+                </button>
+                <button class="action-btn danger-full" @click="handleClearAllData">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                  <span>清除所有数据</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="app-info">
+              <div class="info-item">
+                <span class="info-label">版本</span>
+                <span class="info-value">1.0.0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="toast">
+      <div v-if="showErrorToast" class="error-toast">
+        <div class="toast-content">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>{{ errorToastMessage }}</span>
+        </div>
+      </div>
+    </Transition>
+
+    <FullscreenLyrics 
+      :show="showFullscreenLyrics"
+      :lyrics-list="lyricsList"
+      :current-lyric-index="currentLyricIndex"
+      :current-time="displayTime"
+      :is-playing="isPlaying"
+      :current-song="currentSong"
+      @close="toggleFullscreenLyrics"
+      @seek-to-time="handleFullscreenSeek" />
   </div>
 </template>
 
@@ -2083,6 +2884,29 @@ onUnmounted(() => {
   transition: all 0.2s ease;
 }
 
+.fullscreen-lyrics-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.fullscreen-lyrics-btn:hover {
+  background: var(--btn-hover);
+}
+
+.fullscreen-lyrics-btn.active {
+  background: var(--btn-active);
+}
+
+.fullscreen-lyrics-btn.active svg {
+  stroke: var(--accent-primary);
+}
+
+.fullscreen-lyrics-btn svg {
+  stroke: var(--text-primary);
+}
+
 .playback-rate-section {
   margin-bottom: 1rem;
   background: var(--panel-bg);
@@ -2286,5 +3110,1048 @@ onUnmounted(() => {
 
 .cover-image.loading {
   opacity: 0.5;
+}
+
+.playlist-manager-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.playlist-manager-btn:hover {
+  background: var(--btn-hover);
+}
+
+.playlist-manager-btn.active {
+  background: var(--btn-active);
+}
+
+.playlist-manager-btn.active svg {
+  stroke: var(--accent-primary);
+}
+
+.playlist-manager-btn svg {
+  stroke: var(--text-primary);
+}
+
+.playlist-manager-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.playlist-manager-panel {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-panel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.close-panel-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text-primary);
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .panel-content {
+    flex-direction: column;
+  }
+}
+
+.playlists-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.current-playlist-songs {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid var(--border-primary);
+  padding-left: 1rem;
+}
+
+@media (max-width: 600px) {
+  .current-playlist-songs {
+    border-left: none;
+    border-top: 1px solid var(--border-primary);
+    padding-left: 0;
+    padding-top: 1rem;
+  }
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.section-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.create-playlist-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--accent-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.create-playlist-btn:hover {
+  background: var(--song-item-active);
+  border-color: var(--accent-primary);
+}
+
+.playlists-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.playlist-item:hover {
+  background: var(--song-item-hover);
+}
+
+.playlist-item.active {
+  background: var(--song-item-active);
+}
+
+.playlist-icon {
+  font-size: 1.5rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.playlist-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.playlist-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.playlist-item:hover .playlist-actions,
+.playlist-item.active .playlist-actions {
+  opacity: 1;
+}
+
+.play-playlist-btn {
+  background: var(--accent-primary) !important;
+  color: white !important;
+}
+
+.play-playlist-btn:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+}
+
+.play-playlist-btn:disabled {
+  opacity: 0.4;
+}
+
+.songs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.playlist-song-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.playlist-song-item:hover {
+  background: var(--song-item-hover);
+}
+
+.playlist-song-item.playing {
+  background: var(--song-item-active);
+}
+
+.song-number {
+  width: 20px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.song-cover-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.song-info-small {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-title-small {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-artist-small {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty-playlist-songs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted);
+}
+
+.empty-playlist-songs p {
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+.favorite-btn.active {
+  color: var(--accent-danger) !important;
+  background: var(--danger-bg) !important;
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+}
+
+.dialog-panel {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.dialog-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dialog-content {
+  padding: 1rem 1.25rem;
+}
+
+.playlist-name-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.playlist-name-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border-primary);
+}
+
+.dialog-btn {
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dialog-btn.cancel {
+  background: var(--btn-bg);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.dialog-btn.cancel:hover {
+  background: var(--btn-hover);
+}
+
+.dialog-btn.primary {
+  background: var(--accent-gradient);
+  color: white;
+}
+
+.dialog-btn.primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.dialog-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.selected-song-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.preview-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.preview-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-artist {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.playlist-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.playlist-option:hover:not(.disabled) {
+  background: var(--song-item-hover);
+}
+
+.playlist-option.active {
+  background: var(--song-item-active);
+}
+
+.playlist-option.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.playlist-option-icon {
+  font-size: 1.25rem;
+}
+
+.playlist-option-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.playlist-option-status {
+  color: var(--accent-primary);
+}
+
+.playlist-manager-enter-active,
+.playlist-manager-leave-active,
+.dialog-enter-active,
+.dialog-leave-active {
+  transition: all 0.3s ease;
+}
+
+.playlist-manager-enter-from,
+.playlist-manager-leave-to,
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
+}
+
+.playlist-manager-enter-from .playlist-manager-panel,
+.playlist-manager-leave-to .playlist-manager-panel,
+.dialog-enter-from .dialog-panel,
+.dialog-leave-to .dialog-panel {
+  transform: scale(0.95);
+  opacity: 0;
+}
+
+.statistics-btn.active svg {
+  stroke: var(--accent-primary);
+}
+
+.statistics-btn svg {
+  stroke: var(--text-primary);
+}
+
+.spatial-btn.active svg circle,
+.spatial-btn.active svg path {
+  stroke: var(--accent-primary);
+}
+
+.spatial-btn svg circle,
+.spatial-btn svg path {
+  stroke: var(--text-primary);
+}
+
+.settings-btn.active svg circle,
+.settings-btn.active svg path {
+  stroke: var(--accent-primary);
+}
+
+.settings-btn svg circle,
+.settings-btn svg path {
+  stroke: var(--text-primary);
+}
+
+.panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.side-panel {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 420px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.statistics-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.stat-card {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.stats-section {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.weekly-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: 120px;
+  padding: 0.5rem;
+}
+
+.chart-bar-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.chart-bar {
+  width: 100%;
+  min-height: 4px;
+  background: var(--accent-primary);
+  border-radius: 4px 4px 2px 2px;
+  transition: height 0.3s ease;
+}
+
+.chart-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.top-songs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.top-song-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.top-song-item:hover {
+  background: var(--song-item-hover);
+}
+
+.song-rank {
+  width: 24px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.song-cover-tiny {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.song-info-tiny {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-title-tiny {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-artist-tiny {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.song-stats {
+  text-align: right;
+}
+
+.play-count {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.empty-stats {
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--text-secondary);
+}
+
+.empty-stats p {
+  margin: 0.75rem 0 0 0;
+  font-size: 0.85rem;
+}
+
+.stats-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.spatial-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.spatial-toggle {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toggle-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  padding: 0;
+}
+
+.toggle-switch.on {
+  background: var(--accent-primary);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-switch.on .toggle-thumb {
+  transform: translateX(20px);
+}
+
+.spatial-section {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.section-value {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.spatial-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--bg-secondary);
+  outline: none;
+  cursor: pointer;
+  margin-top: 0.75rem;
+}
+
+.spatial-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.spatial-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.preset-btn {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-btn:hover {
+  background: var(--song-item-hover);
+  border-color: var(--accent-primary);
+}
+
+.preset-btn.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.spatial-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.settings-section {
+  background: var(--panel-bg);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.theme-options {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.theme-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: var(--btn-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-option:hover {
+  background: var(--song-item-hover);
+}
+
+.theme-option.active {
+  border-color: var(--accent-primary);
+  background: var(--song-item-active);
+}
+
+.theme-preview {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 2px solid var(--border-primary);
+}
+
+.theme-preview.light {
+  background: linear-gradient(135deg, #f8f9fa 50%, #ffffff 50%);
+}
+
+.theme-preview.dark {
+  background: linear-gradient(135deg, #1a1a2e 50%, #16213e 50%);
+}
+
+.theme-preview.auto {
+  background: linear-gradient(135deg, #f8f9fa 30%, #1a1a2e 70%);
+}
+
+.theme-option span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.settings-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+  background: var(--btn-bg);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background: var(--song-item-hover);
+  border-color: var(--accent-primary);
+}
+
+.action-btn.danger {
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.action-btn.danger-full {
+  background: var(--accent-danger);
+  color: white;
+  border-color: var(--accent-danger);
+}
+
+.action-btn.danger-full:hover {
+  background: var(--accent-hover);
+}
+
+.app-info {
+  margin-top: auto;
+  padding-top: 0.5rem;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border-primary);
+}
+
+.info-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.info-value {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.error-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+}
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  border: 1px solid var(--border-primary);
+}
+
+.toast-content svg {
+  color: var(--accent-primary);
+}
+
+.panel-enter-active,
+.panel-leave-active,
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+
+.panel-enter-from,
+.panel-leave-to {
+  opacity: 0;
+}
+
+.panel-enter-from .side-panel,
+.panel-leave-to .side-panel {
+  transform: translateY(10px);
+  opacity: 0;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+}
+
+@media (max-width: 600px) {
+  .stats-overview {
+    grid-template-columns: 1fr;
+  }
+  
+  .preset-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
