@@ -1080,26 +1080,83 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="main-controls">
-        <div class="control-group left-controls">
-          <button class="control-btn play-mode-btn" 
-                  @click="togglePlayMode"
-                  :class="playModeColor"
-                  :title="playModeLabel">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path :d="playModeIcon" />
+      <div class="controls">
+        <div class="control-group system-controls">
+          <button class="control-btn theme-btn"
+                  @click="handleToggleTheme"
+                  :class="{ 'active': !isDark }"
+                  :title="isDark ? '切换为浅色主题' : '切换为深色主题'">
+            <svg v-if="isDark" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
             </svg>
           </button>
-          
+
+          <button class="control-btn reset-btn"
+                  @click="handleResetAll"
+                  title="重置所有设置为默认">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="control-group feature-controls">
           <button class="control-btn lyrics-btn"
                   @click="toggleLyricsPanel"
                   :class="lyricsButtonColor"
                   :title="showLyricsPanel ? '关闭歌词' : '显示歌词'">
-            <svg viewBox="0 0 24 24" width="20" height="20">
+            <svg viewBox="0 0 24 24" width="22" height="22">
               <path :d="lyricsButtonIcon" />
             </svg>
           </button>
-          
+
+          <button class="control-btn sleep-timer-btn"
+                  @click="toggleSleepTimerPanel"
+                  :class="sleepTimerButtonColor"
+                  :title="sleepTimerEnabled ? `定时中: ${sleepTimerRemainingFormatted}` : '睡眠定时'">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path :d="sleepTimerButtonIcon" />
+            </svg>
+          </button>
+
+          <button class="control-btn eq-btn"
+                  @click="toggleEQPanel"
+                  :class="{ 'active': currentEQPreset !== EQPresets.NORMAL }"
+                  :title="`音效: ${currentEQPresetName}`">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+            </svg>
+          </button>
+
+          <button class="control-btn playback-rate-btn"
+                  @click="togglePlaybackRatePanel"
+                  :class="playbackRateButtonColor"
+                  :title="`播放速度: ${playbackRateDisplay}`">
+            <span class="playback-rate-text">{{ playbackRateDisplay }}</span>
+          </button>
+
+          <button class="control-btn lyrics-settings-btn"
+                  @click="toggleLyricsSettingsPanel"
+                  title="歌词设置">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+
+          <button class="control-btn fullscreen-lyrics-btn"
+                  @click="toggleFullscreenLyrics"
+                  :class="{ 'active': showFullscreenLyrics }"
+                  title="全屏歌词">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+            </svg>
+          </button>
+
           <button class="control-btn playlist-manager-btn"
                   @click="togglePlaylistManager"
                   :class="{ 'active': showPlaylistManager }"
@@ -1109,196 +1166,76 @@ onUnmounted(() => {
               <path d="M16 11H6M16 15H6M10 7H6"/>
             </svg>
           </button>
+
+          <button class="control-btn statistics-btn"
+                  @click="toggleStatisticsPanel"
+                  :class="{ 'active': showStatisticsPanel }"
+                  :title="`播放统计 - 累计 ${totalListenTimeFormatted}`">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </button>
+
+          <button class="control-btn spatial-btn"
+                  @click="toggleSpatialPanel"
+                  :class="{ 'active': spatialConfig.enabled }"
+                  :title="`空间音效: ${currentSpatialPresetName}`">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12h.01M7 12h.01M11 12h.01M15 12h.01M19 12h.01"/>
+              <path d="M12 3v18"/>
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+          </button>
+
+          <button class="control-btn settings-btn"
+                  @click="toggleSettingsPanel"
+                  :class="{ 'active': showSettingsPanel }"
+                  title="设置">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+            </svg>
+          </button>
+
+          <button class="control-btn play-mode-btn" 
+                  @click="togglePlayMode"
+                  :class="playModeColor"
+                  :title="playModeLabel">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path :d="playModeIcon" />
+            </svg>
+          </button>
         </div>
 
-        <div class="control-group center-controls">
+        <div class="control-group playback-controls">
           <button class="control-btn skip-btn prev-btn"
                   @click="handlePrevious"
-                  :disabled="playlist.length <= 1"
-                  title="上一曲">
-            <svg viewBox="0 0 24 24" width="28" height="28">
+                  :disabled="playlist.length <= 1">
+            <svg viewBox="0 0 24 24" width="26" height="26">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
             </svg>
           </button>
         
-          <button class="control-btn play-btn main-play-btn"
+          <button class="control-btn play-btn" 
                   @click="togglePlay"
-                  :disabled="!currentSong"
-                  :title="isPlaying ? '暂停' : '播放'">
-            <svg v-if="!isPlaying" class="play-icon" viewBox="0 0 24 24" width="40" height="40">
+                  :disabled="!currentSong">
+            <svg v-if="!isPlaying" viewBox="0 0 24 24" width="36" height="36">
               <path d="M8 5v14l11-7z"/>
             </svg>
-            <svg v-else class="pause-icon" viewBox="0 0 24 24" width="40" height="40">
+            <svg v-else viewBox="0 0 24 24" width="36" height="36">
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
             </svg>
           </button>
         
           <button class="control-btn skip-btn next-btn"
                   @click="handleNext"
-                  :disabled="playlist.length <= 1"
-                  title="下一曲">
-            <svg viewBox="0 0 24 24" width="28" height="28">
+                  :disabled="playlist.length <= 1">
+            <svg viewBox="0 0 24 24" width="26" height="26">
               <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
             </svg>
           </button>
         </div>
-
-        <div class="control-group right-controls">
-          <button class="control-btn eq-btn"
-                  @click="toggleEQPanel"
-                  :class="{ 'active': currentEQPreset !== EQPresets.NORMAL }"
-                  :title="`音效: ${currentEQPresetName}`">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
-            </svg>
-          </button>
-          
-          <button class="control-btn sleep-timer-btn"
-                  @click="toggleSleepTimerPanel"
-                  :class="sleepTimerButtonColor"
-                  :title="sleepTimerEnabled ? `定时中: ${sleepTimerRemainingFormatted}` : '睡眠定时'">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path :d="sleepTimerButtonIcon" />
-            </svg>
-          </button>
-          
-          <button class="control-btn more-btn"
-                  @click="toggleMoreMenu"
-                  :class="{ 'active': showMoreMenu }"
-                  title="更多功能">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="1"/>
-              <circle cx="19" cy="12" r="1"/>
-              <circle cx="5" cy="12" r="1"/>
-            </svg>
-          </button>
-        </div>
       </div>
-
-      <transition name="more-menu">
-        <div v-if="showMoreMenu" class="more-menu-overlay" @click="toggleMoreMenu">
-          <div class="more-menu-panel" @click.stop>
-            <div class="more-menu-header">
-              <h5 class="more-menu-title">更多功能</h5>
-              <button class="more-menu-close" @click="toggleMoreMenu">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </button>
-            </div>
-            <div class="more-menu-content">
-              <div class="more-menu-section">
-                <h6 class="more-menu-section-title">播放设置</h6>
-                <div class="more-menu-buttons">
-                  <button class="more-menu-btn"
-                          @click="togglePlaybackRatePanel; toggleMoreMenu()"
-                          :title="`播放速度: ${playbackRateDisplay}`">
-                    <span class="more-menu-btn-icon">
-                      <span class="playback-rate-text">{{ playbackRateDisplay }}</span>
-                    </span>
-                    <span class="more-menu-btn-label">播放速度</span>
-                  </button>
-                  
-                  <button class="more-menu-btn"
-                          @click="toggleLyricsSettingsPanel; toggleMoreMenu()"
-                          title="歌词设置">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">歌词设置</span>
-                  </button>
-                  
-                  <button class="more-menu-btn"
-                          @click="toggleFullscreenLyrics; toggleMoreMenu()"
-                          :class="{ 'active': showFullscreenLyrics }"
-                          title="全屏歌词">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">全屏歌词</span>
-                  </button>
-                  
-                  <button class="more-menu-btn"
-                          @click="toggleSpatialPanel; toggleMoreMenu()"
-                          :class="{ 'active': spatialConfig.enabled }"
-                          :title="`空间音效: ${currentSpatialPresetName}`">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 12h.01M7 12h.01M11 12h.01M15 12h.01M19 12h.01"/>
-                        <path d="M12 3v18"/>
-                        <circle cx="12" cy="12" r="10"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">空间音效</span>
-                  </button>
-                </div>
-              </div>
-              
-              <div class="more-menu-section">
-                <h6 class="more-menu-section-title">数据与统计</h6>
-                <div class="more-menu-buttons">
-                  <button class="more-menu-btn"
-                          @click="toggleStatisticsPanel; toggleMoreMenu()"
-                          :class="{ 'active': showStatisticsPanel }"
-                          :title="`播放统计 - 累计 ${totalListenTimeFormatted}`">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">播放统计</span>
-                  </button>
-                  
-                  <button class="more-menu-btn"
-                          @click="toggleSettingsPanel; toggleMoreMenu()"
-                          :class="{ 'active': showSettingsPanel }"
-                          title="设置">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">设置</span>
-                  </button>
-                  
-                  <button class="more-menu-btn"
-                          @click="handleToggleTheme"
-                          :class="{ 'active': !isDark }"
-                          :title="isDark ? '切换为浅色主题' : '切换为深色主题'">
-                    <span class="more-menu-btn-icon">
-                      <svg v-if="isDark" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-                      </svg>
-                      <svg v-else viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">主题切换</span>
-                  </button>
-                  
-                  <button class="more-menu-btn danger"
-                          @click="handleResetAll"
-                          title="重置所有设置为默认">
-                    <span class="more-menu-btn-icon">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/>
-                        <path d="M3 3v5h5"/>
-                      </svg>
-                    </span>
-                    <span class="more-menu-btn-label">重置设置</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </transition>
 
       <div class="volume-control">
         <button class="control-btn volume-btn" @click="toggleMute">
@@ -2259,80 +2196,49 @@ onUnmounted(() => {
   opacity: 0.9;
 }
 
-.main-controls {
+.controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
   margin-bottom: 1rem;
-  padding: 0.75rem;
-  background: var(--panel-bg);
-  border-radius: 16px;
-  box-shadow: var(--shadow-sm);
+  padding: 0 0.5rem;
 }
 
 .control-group {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
-.control-group.left-controls,
-.control-group.right-controls {
-  flex: 1;
-  min-width: 0;
+.control-group.system-controls {
+  gap: 0.3rem;
 }
 
-.control-group.left-controls {
-  justify-content: flex-start;
+.control-group.feature-controls {
+  gap: 0.25rem;
 }
 
-.control-group.center-controls {
-  justify-content: center;
-  gap: 0.75rem;
-}
-
-.control-group.right-controls {
-  justify-content: flex-end;
+.control-group.playback-controls {
+  gap: 0.6rem;
 }
 
 .control-btn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  width: 40px;
-  height: 40px;
+  transition: all 0.2s ease;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  position: relative;
-  overflow: hidden;
-}
-
-.control-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--btn-hover);
-  border-radius: 50%;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  transform: scale(0.8);
-}
-
-.control-btn:hover:not(:disabled)::before {
-  opacity: 1;
-  transform: scale(1);
 }
 
 .control-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
+  background: var(--btn-hover);
+  transform: none;
 }
 
 .control-btn:disabled {
@@ -2342,151 +2248,140 @@ onUnmounted(() => {
 
 .control-btn svg {
   fill: var(--text-primary);
-  position: relative;
-  z-index: 1;
-  transition: all 0.25s ease;
 }
 
 .control-btn.active {
   background: var(--btn-active);
 }
 
-.control-btn.active::before {
-  opacity: 0;
-}
-
 .control-btn.active svg {
   fill: var(--accent-primary);
-  filter: drop-shadow(0 0 4px rgba(102, 126, 234, 0.4));
 }
 
 .lyrics-btn,
 .play-mode-btn,
 .sleep-timer-btn,
 .eq-btn,
-.more-btn {
-  width: 40px;
-  height: 40px;
+.lyrics-settings-btn,
+.theme-btn,
+.reset-btn {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s ease;
 }
 
 .lyrics-btn:hover,
 .play-mode-btn:hover,
 .sleep-timer-btn:hover,
 .eq-btn:hover,
-.more-btn:hover {
-  background: transparent;
+.lyrics-settings-btn:hover,
+.theme-btn:hover,
+.reset-btn:hover {
+  background: var(--btn-hover);
 }
 
 .lyrics-btn.active svg,
 .play-mode-btn.active svg,
-.sleep-timer-btn.active svg,
-.more-btn.active svg {
+.sleep-timer-btn.active svg {
   fill: var(--accent-primary);
 }
 
-.main-play-btn {
-  width: 72px;
-  height: 72px;
+.play-btn {
+  width: 60px;
+  height: 60px;
   background: var(--accent-gradient) !important;
   border-radius: 50%;
-  box-shadow: var(--shadow-lg), var(--shadow-glow), 0 4px 20px rgba(102, 126, 234, 0.5);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  min-width: 72px;
-  position: relative;
-  overflow: visible;
-}
-
-.main-play-btn::before {
-  content: '';
-  position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
-  border-radius: 50%;
-  background: var(--accent-gradient);
-  opacity: 0;
-  z-index: -1;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
   transition: all 0.3s ease;
-  animation: play-btn-pulse 2s ease-in-out infinite;
+  min-width: 60px;
 }
 
-.main-play-btn:hover:not(:disabled)::before {
-  opacity: 0.4;
-  transform: scale(1.1);
+.play-btn:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-xl), var(--shadow-glow);
 }
 
-.main-play-btn:hover:not(:disabled) {
-  transform: scale(1.08) translateY(-2px);
-  box-shadow: var(--shadow-xl), 0 8px 30px rgba(102, 126, 234, 0.6), 0 0 40px rgba(102, 126, 234, 0.4);
-}
-
-.main-play-btn:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.main-play-btn svg {
+.play-btn svg {
   fill: var(--text-on-accent) !important;
-  position: relative;
-  z-index: 1;
-  transition: all 0.2s ease;
 }
 
-.main-play-btn .play-icon {
-  transform: translateX(2px);
-}
-
-.main-play-btn:disabled {
+.play-btn:disabled {
   opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.main-play-btn:disabled::before {
-  animation: none;
-}
-
-@keyframes play-btn-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.3;
-  }
-  50% {
-    transform: scale(1.08);
-    opacity: 0.5;
-  }
 }
 
 .skip-btn {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  background: var(--btn-bg);
-}
-
-.skip-btn::before {
-  background: var(--accent-primary);
-  opacity: 0.1;
+  transition: background-color 0.2s ease;
 }
 
 .skip-btn:hover {
-  background: var(--btn-bg);
-  transform: scale(1.1);
+  background: var(--btn-hover);
 }
 
-.skip-btn:hover svg {
+.playback-rate-btn {
+  width: 46px;
+  height: 36px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.playback-rate-btn:hover {
+  background: var(--btn-hover);
+}
+
+.playback-rate-btn.active {
+  background: var(--btn-active);
+  border-color: var(--accent-primary);
+}
+
+.playback-rate-btn.active .playback-rate-text {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.playback-rate-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.fullscreen-lyrics-btn,
+.playlist-manager-btn,
+.statistics-btn,
+.spatial-btn,
+.settings-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.fullscreen-lyrics-btn:hover,
+.playlist-manager-btn:hover,
+.statistics-btn:hover,
+.spatial-btn:hover,
+.settings-btn:hover {
+  background: var(--btn-hover);
+}
+
+.fullscreen-lyrics-btn.active,
+.playlist-manager-btn.active,
+.statistics-btn.active,
+.spatial-btn.active,
+.settings-btn.active {
+  background: var(--btn-active);
+}
+
+.fullscreen-lyrics-btn.active svg,
+.playlist-manager-btn.active svg,
+.statistics-btn.active svg,
+.spatial-btn.active svg,
+.settings-btn.active svg {
   fill: var(--accent-primary);
-}
-
-.skip-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.skip-btn:disabled:hover {
-  transform: none;
 }
 
 .play-mode-indicator {
