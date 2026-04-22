@@ -264,6 +264,9 @@ function handleCreatePlaylist() {
     if (selectedSongForPlaylist.value) {
       addSongToPlaylist(playlist.id, selectedSongForPlaylist.value.id)
       selectedSongForPlaylist.value = null
+      showToast(`歌单"${playlist.name}"创建成功，并已添加当前歌曲`)
+    } else {
+      showToast(`歌单"${playlist.name}"创建成功`)
     }
     newPlaylistName.value = ''
     showNewPlaylistDialog.value = false
@@ -273,8 +276,14 @@ function handleCreatePlaylist() {
 }
 
 function handleDeletePlaylist(playlistId) {
-  if (confirm('确定要删除这个歌单吗？此操作不可撤销。')) {
-    deletePlaylist(playlistId)
+  const playlist = getPlaylistById(playlistId)
+  if (!playlist) return
+  
+  if (confirm(`确定要删除歌单"${playlist.name}"吗？此操作不可撤销。`)) {
+    const success = deletePlaylist(playlistId)
+    if (success) {
+      showToast(`歌单"${playlist.name}"已删除`)
+    }
   }
 }
 
@@ -309,17 +318,44 @@ function openAddToPlaylistDialog(song) {
 function handleAddSongToPlaylist(playlistId) {
   if (!selectedSongForPlaylist.value) return
   
-  addSongToPlaylist(playlistId, selectedSongForPlaylist.value.id)
+  const playlist = getPlaylistById(playlistId)
+  const song = selectedSongForPlaylist.value
+  
+  if (!playlist) return
+  
+  const alreadyInPlaylist = isSongInPlaylist(playlistId, song.id)
+  
+  addSongToPlaylist(playlistId, song.id)
   showAddToPlaylistDialog.value = false
   selectedSongForPlaylist.value = null
+  
+  if (alreadyInPlaylist) {
+    showToast(`歌曲"${song.title}"已在"${playlist.name}"中`)
+  } else {
+    showToast(`已将"${song.title}"添加到"${playlist.name}"`)
+  }
 }
 
 function handleRemoveSongFromPlaylist(playlistId, songId) {
+  const playlist = getPlaylistById(playlistId)
+  const song = getSongById(songId)
+  
   removeSongFromPlaylist(playlistId, songId)
+  
+  if (playlist && song) {
+    showToast(`已将"${song.title}"从"${playlist.name}"中移除`)
+  }
 }
 
 function handleToggleFavorite(song) {
+  const wasFavorite = isSongInFavorites(song.id)
   toggleFavorite(song.id)
+  
+  if (wasFavorite) {
+    showToast(`已将"${song.title}"取消喜欢`)
+  } else {
+    showToast(`已将"${song.title}"添加到我喜欢`)
+  }
 }
 
 const progressBarRef = ref(null)
@@ -428,8 +464,6 @@ const {
   setTheme,
   toggleTheme
 } = useTheme()
-
-const showSettingsPanel = ref(false)
 
 const dragOverIndex = ref(-1)
 const draggingIndex = ref(-1)
@@ -1271,12 +1305,28 @@ onUnmounted(() => {
             <span class="song-artist-mini">{{ song.artist }}</span>
           </div>
           <div class="song-actions">
-            <button class="action-btn mini" @click.stop="handleMoveToTop(index)" :disabled="index === 0">
+            <button class="action-btn mini favorite-btn"
+                    :class="{ 'active': isSongInFavorites(song.id) }"
+                    @click.stop="handleToggleFavorite(song)"
+                    :title="isSongInFavorites(song.id) ? '取消喜欢' : '添加到喜欢'">
+              <svg v-if="isSongInFavorites(song.id)" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
+            <button class="action-btn mini" @click.stop="openAddToPlaylistDialog(song)" :title="添加到歌单">
+              <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+            </button>
+            <button class="action-btn mini" @click.stop="handleMoveToTop(index)" :disabled="index === 0" :title="置顶">
               <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 19V5M5 12l7-7 7 7"/>
               </svg>
             </button>
-            <button class="action-btn mini danger" @click.stop="handleRemoveSong(index)">
+            <button class="action-btn mini danger" @click.stop="handleRemoveSong(index)" :title="从播放列表移除">
               <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 6L6 18M6 6l12 12"/>
               </svg>
