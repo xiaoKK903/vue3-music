@@ -1206,35 +1206,40 @@ onUnmounted(() => {
             </svg>
           </button>
         </div>
+      </div>
 
-        <div class="control-group playback-controls">
-          <button class="control-btn skip-btn prev-btn"
-                  @click="handlePrevious"
-                  :disabled="playlist.length <= 1">
-            <svg viewBox="0 0 24 24" width="26" height="26">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            </svg>
-          </button>
-        
-          <button class="control-btn play-btn" 
-                  @click="togglePlay"
-                  :disabled="!currentSong">
-            <svg v-if="!isPlaying" viewBox="0 0 24 24" width="36" height="36">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="36" height="36">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-            </svg>
-          </button>
-        
-          <button class="control-btn skip-btn next-btn"
-                  @click="handleNext"
-                  :disabled="playlist.length <= 1">
-            <svg viewBox="0 0 24 24" width="26" height="26">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-            </svg>
-          </button>
-        </div>
+      <div class="main-playback-controls">
+        <button class="main-control-btn main-prev-btn"
+                @click="handlePrevious"
+                :disabled="playlist.length <= 1"
+                title="上一曲">
+          <svg viewBox="0 0 24 24" width="32" height="32">
+            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+          </svg>
+        </button>
+
+        <button class="main-control-btn main-play-btn"
+                @click="togglePlay"
+                :disabled="!currentSong"
+                :class="{ 'playing': isPlaying }"
+                :title="isPlaying ? '暂停' : '播放'">
+          <div class="main-play-btn-glow"></div>
+          <svg v-if="!isPlaying" class="play-icon" viewBox="0 0 24 24" width="44" height="44">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          <svg v-else class="pause-icon" viewBox="0 0 24 24" width="44" height="44">
+            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+          </svg>
+        </button>
+
+        <button class="main-control-btn main-next-btn"
+                @click="handleNext"
+                :disabled="playlist.length <= 1"
+                title="下一曲">
+          <svg viewBox="0 0 24 24" width="32" height="32">
+            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+          </svg>
+        </button>
       </div>
 
       <div class="volume-control">
@@ -2571,6 +2576,131 @@ onUnmounted(() => {
 .more-menu-enter-from .more-menu-panel,
 .more-menu-leave-to .more-menu-panel {
   transform: translateY(100%);
+}
+
+.main-playback-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin: 1rem 0;
+  padding: 0.5rem;
+}
+
+.main-control-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.main-control-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.main-prev-btn,
+.main-next-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--btn-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.main-prev-btn:hover:not(:disabled),
+.main-next-btn:hover:not(:disabled) {
+  background: var(--btn-hover);
+  transform: scale(1.08);
+  box-shadow: var(--shadow-md);
+}
+
+.main-prev-btn:hover:not(:disabled) svg,
+.main-next-btn:hover:not(:disabled) svg {
+  fill: var(--accent-primary);
+}
+
+.main-prev-btn svg,
+.main-next-btn svg {
+  fill: var(--text-primary);
+  transition: fill 0.2s ease;
+}
+
+.main-play-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent-gradient) !important;
+  box-shadow: var(--shadow-lg), var(--shadow-glow), 0 4px 20px rgba(102, 126, 234, 0.5);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: visible;
+}
+
+.main-play-btn:hover:not(:disabled) {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-xl), 0 8px 30px rgba(102, 126, 234, 0.6), 0 0 50px rgba(102, 126, 234, 0.4);
+}
+
+.main-play-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.main-play-btn .play-icon,
+.main-play-btn .pause-icon {
+  fill: var(--text-on-accent) !important;
+  position: relative;
+  z-index: 2;
+  transition: all 0.2s ease;
+}
+
+.main-play-btn .play-icon {
+  transform: translateX(2px);
+}
+
+.main-play-btn-glow {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  opacity: 0;
+  z-index: -1;
+  transition: all 0.3s ease;
+  animation: main-play-btn-pulse 2s ease-in-out infinite;
+}
+
+.main-play-btn:hover:not(:disabled) .main-play-btn-glow {
+  opacity: 0.4;
+}
+
+.main-play-btn.playing .main-play-btn-glow {
+  animation: main-play-btn-pulse 1.5s ease-in-out infinite, main-play-btn-glow-spread 2s ease-in-out infinite;
+}
+
+@keyframes main-play-btn-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.5;
+  }
+}
+
+@keyframes main-play-btn-glow-spread {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(102, 126, 234, 0.6), 0 0 60px rgba(102, 126, 234, 0.3);
+  }
 }
 
 .volume-control {
