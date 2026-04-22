@@ -9,7 +9,11 @@ export const STORAGE_KEYS = {
   EQ_CONFIG: 'music_player_eq_config',
   SLEEP_TIMER: 'music_player_sleep_timer',
   LYRICS_CONFIG: 'music_player_lyrics_config',
-  LAYOUT_CONFIG: 'music_player_layout_config'
+  LAYOUT_CONFIG: 'music_player_layout_config',
+  PLAYLISTS: 'music_player_playlists',
+  CURRENT_PLAYLIST: 'music_player_current_playlist',
+  PLAY_STATISTICS: 'music_player_play_statistics',
+  SPATIAL_CONFIG: 'music_player_spatial_config'
 }
 
 export const DEFAULT_CONFIG = {
