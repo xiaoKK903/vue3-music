@@ -496,10 +496,6 @@ function handleResetAll() {
   }
 }
 
-function toggleSettingsPanel() {
-  showSettingsPanel.value = !showSettingsPanel.value
-}
-
 const showPlaybackRatePanel = ref(false)
 
 function togglePlaybackRatePanel() {
