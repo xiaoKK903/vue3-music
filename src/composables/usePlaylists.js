@@ -1,7 +1,10 @@
 import { ref, computed } from 'vue'
 import { useStorage } from './useStorage'
+import { localSongs } from '../data/songs.js'
 
 const { STORAGE_KEYS, getItem, setItem, removeItem, deepClone } = useStorage()
+
+const allSongIds = localSongs.map(song => song.id)
 
 export const defaultPlaylists = [
   {
@@ -9,7 +12,7 @@ export const defaultPlaylists = [
     name: '默认歌单',
     icon: '📁',
     cover: null,
-    songIds: [],
+    songIds: [...allSongIds],
     createdAt: Date.now(),
     updatedAt: Date.now(),
     description: '系统默认歌单'
